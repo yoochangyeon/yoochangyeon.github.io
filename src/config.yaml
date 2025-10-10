@@ -4,7 +4,19 @@ site:
   base: '/'
   trailingSlash: false
 
+  # Google Search Console 사이트 소유권 확인
+  # 1. https://search.google.com/search-console 접속
+  # 2. 속성 추가 > HTML 태그 방식 선택
+  # 3. content="여기_나오는_코드" 부분만 아래에 입력
+  # 예: content="abc123def456" → googleSiteVerificationId: "abc123def456"
   googleSiteVerificationId: false
+
+  # 네이버 웹마스터 도구 사이트 소유권 확인
+  # 1. https://searchadvisor.naver.com 접속
+  # 2. 사이트 등록 > HTML 태그 방식 선택
+  # 3. content="여기_나오는_코드" 부분만 아래에 입력
+  # 예: content="xyz789ghi012" → naverSiteVerificationId: "xyz789ghi012"
+  naverSiteVerificationId: false
 
 # Default SEO metadata
 metadata:
@@ -16,6 +28,7 @@ metadata:
     index: true
     follow: true
   openGraph:
+    locale: ko_KR
     site_name: "개발하는 유에녹"
     images:
       - url: '~/assets/images/default.png'
@@ -55,18 +68,31 @@ apps:
         index: true
 
     tag:
-      isEnabled: false
+      isEnabled: true
       pathname: 'tag' # Tag main path /tag/some-tag, you can change this to "topics" (/topics/some-category)
       robots:
-        index: false
+        index: true
 
     isRelatedPostsEnabled: true
     relatedPostsCount: 4
 
 analytics:
   vendors:
+    # Google Analytics 4 설정
+    # 1. https://analytics.google.com 접속
+    # 2. 새 속성 생성 (GA4)
+    # 3. 데이터 스트림 > 웹 > 측정 ID 복사
+    # 4. "G-XXXXXXXXXX" 형식의 측정 ID를 아래에 입력
+    # 예: id: "G-ABC1234567"
     googleAnalytics:
-      id: null # or "G-XXXXXXXXXX"
+      id: null
+
+    # 네이버 애널리틱스 (선택사항, 한국 시장 분석 강화)
+    # 1. https://analytics.naver.com 접속
+    # 2. 사이트 등록 후 ID 확인
+    # 예: id: "s_1a2b3c4d5e"
+    naverAnalytics:
+      id: null
 
 ui:
   theme: 'system' # Values: "system" | "light" | "dark" | "light:only" | "dark:only"

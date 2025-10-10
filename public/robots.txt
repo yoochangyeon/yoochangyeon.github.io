@@ -1,2 +1,13 @@
 User-agent: *
-Disallow:
+Allow: /
+
+# 네이버 검색로봇
+User-agent: Yeti
+Allow: /
+
+# CMS 관리자 페이지 크롤링 제외
+User-agent: *
+Disallow: /decapcms/
+
+# Sitemap
+Sitemap: https://yoochangyeon.github.io/sitemap-index.xml

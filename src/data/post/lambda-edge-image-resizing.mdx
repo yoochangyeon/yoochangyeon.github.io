@@ -1,10 +1,20 @@
 ---
 publishDate: 2025-01-14T15:00:00Z
-title: "Lambda@Edge를 이용한 이미지 리사이징"
-excerpt: "AVIF 이미지 변환의 성능 병목을 SQS 이벤트 기반 아키텍처로 해결하고 Lambda@Edge 응답 시간을 20초에서 2초로 개선한 과정을 공유합니다."
+updateDate: 2025-01-14T15:00:00Z
+author: "유창연"
+title: "Lambda@Edge 이미지 최적화: 응답시간 90% 개선 (20초→2초)"
+excerpt: "AWS Lambda@Edge로 AVIF 이미지 변환 성능 병목을 해결한 실전 경험. SQS 이벤트 기반 아키텍처로 응답 시간을 20초에서 2초로 단축한 방법을 코드와 함께 공유합니다."
+description: "AWS Lambda@Edge와 CloudFront로 실시간 이미지 리사이징 시스템을 구축하고, AVIF 변환의 성능 병목 현상을 SQS 이벤트 아키텍처로 해결했습니다. 응답 시간을 90% 개선한 구체적인 방법과 코드를 공유합니다."
+# TODO: 이미지 최적화 권장사항
+# 1. Unsplash 이미지를 다운로드하여 /public/images/blog/ 에 저장
+# 2. WebP 포맷으로 변환 (squoosh.app 또는 sharp 활용)
+# 3. 파일명: lambda-edge-optimization.webp
+# 4. image 속성을 "/images/blog/lambda-edge-optimization.webp"로 변경
 image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&h=630&fit=crop"
+imageAlt: "AWS Lambda@Edge 아키텍처 다이어그램 - CloudFront CDN에서 Lambda 함수를 통한 이미지 최적화 프로세스"
 category: "AWS"
-tags: ["aws", "lambda", "cloudfront", "image-optimization", "performance"]
+tags: ["aws", "lambda", "cloudfront", "image-optimization", "performance", "serverless"]
+keywords: ["Lambda@Edge", "이미지 리사이징", "AVIF 최적화", "WebP 변환", "CloudFront CDN", "SQS 이벤트", "이미지 최적화", "AWS 성능 개선", "Sharp 라이브러리", "서버리스 아키텍처"]
 draft: false
 ---
 

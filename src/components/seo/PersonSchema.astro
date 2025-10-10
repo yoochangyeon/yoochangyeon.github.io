@@ -1,0 +1,36 @@
+---
+import { SITE } from 'astrowind:config';
+
+export interface Props {
+  name: string;
+  jobTitle?: string;
+  description?: string;
+  image?: string;
+  sameAs?: string[];
+}
+
+const {
+  name,
+  jobTitle = '소프트웨어 엔지니어',
+  description,
+  image,
+  sameAs = [],
+} = Astro.props;
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: name,
+  jobTitle: jobTitle,
+  ...(description && { description }),
+  ...(image && { image }),
+  ...(sameAs.length > 0 && { sameAs }),
+  url: `${SITE.site}/about`,
+  worksFor: {
+    '@type': 'Organization',
+    name: SITE.name,
+  },
+};
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

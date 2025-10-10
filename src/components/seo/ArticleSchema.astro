@@ -1,0 +1,67 @@
+---
+import { SITE, METADATA } from 'astrowind:config';
+
+export interface Props {
+  title: string;
+  description: string;
+  publishDate: Date | string;
+  modifiedDate?: Date | string;
+  image?: string;
+  author?: string;
+  category?: string;
+  tags?: string[];
+  url: string;
+}
+
+const {
+  title,
+  description,
+  publishDate,
+  modifiedDate,
+  image,
+  author = '유창연',
+  category,
+  tags = [],
+  url,
+} = Astro.props;
+
+const publishDateISO = typeof publishDate === 'string' ? publishDate : publishDate.toISOString();
+const modifiedDateISO = modifiedDate
+  ? (typeof modifiedDate === 'string' ? modifiedDate : modifiedDate.toISOString())
+  : publishDateISO;
+
+const imageUrl = image || `${SITE.site}/assets/images/default.png`;
+const fullUrl = url.startsWith('http') ? url : `${SITE.site}${url}`;
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: title,
+  description: description,
+  image: imageUrl,
+  datePublished: publishDateISO,
+  dateModified: modifiedDateISO,
+  author: {
+    '@type': 'Person',
+    name: author,
+    url: `${SITE.site}/about`,
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: SITE.name,
+    logo: {
+      '@type': 'ImageObject',
+      url: `${SITE.site}/assets/images/default.png`,
+    },
+  },
+  mainEntityOfPage: {
+    '@type': 'WebPage',
+    '@id': fullUrl,
+  },
+  ...(category && { articleSection: category }),
+  ...(tags.length > 0 && { keywords: tags.join(', ') }),
+  inLanguage: 'ko-KR',
+};
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

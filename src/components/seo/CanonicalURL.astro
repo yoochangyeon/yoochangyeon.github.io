@@ -1,0 +1,34 @@
+---
+/**
+ * Canonical URL Component
+ *
+ * 검색엔진에 표준 URL을 명시하여 중복 콘텐츠 문제를 방지합니다.
+ * 동일한 콘텐츠가 여러 URL로 접근 가능할 때 우선적으로 인덱싱할 URL을 지정합니다.
+ *
+ * SEO 효과:
+ * - 중복 콘텐츠 페널티 방지
+ * - 링크 권위(Link Equity) 통합
+ * - 검색 결과 일관성 유지
+ */
+
+import { SITE } from 'astrowind:config';
+
+interface Props {
+  path?: string;
+}
+
+const { path } = Astro.props;
+
+// Astro.url.pathname을 우선 사용하고, props로 전달된 path를 fallback으로 사용
+const currentPath = path || Astro.url.pathname;
+
+// trailing slash 정규화 (SITE.trailingSlash 설정 따름)
+const normalizedPath = SITE.trailingSlash
+  ? currentPath.endsWith('/') ? currentPath : `${currentPath}/`
+  : currentPath.endsWith('/') && currentPath !== '/' ? currentPath.slice(0, -1) : currentPath;
+
+// 절대 URL 생성
+const canonicalURL = new URL(normalizedPath, SITE.site).href;
+---
+
+<link rel="canonical" href={canonicalURL} />

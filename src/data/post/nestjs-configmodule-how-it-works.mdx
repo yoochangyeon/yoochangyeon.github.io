@@ -1,10 +1,20 @@
 ---
 publishDate: 2025-01-15T09:00:00Z
-title: "NestJS ConfigModule은 어떻게 동작하는가?"
-excerpt: "ConfigService 값 조회 실패 원인을 추적하며 ConfigModule의 DynamicModule 생성과 Provider 주입 메커니즘을 상세히 분석합니다."
+updateDate: 2025-01-15T09:00:00Z
+author: "유창연"
+title: "NestJS ConfigModule 동작 원리 완벽 가이드: ConfigService 값 조회 실패 해결"
+excerpt: "ConfigService에서 환경변수가 조회되지 않는 문제의 근본 원인을 코드 레벨에서 분석합니다. DynamicModule 생성 과정과 Provider 주입 메커니즘을 상세히 파헤쳐 실전 해결 방법을 제시합니다."
+description: "NestJS ConfigModule의 DynamicModule 생성 과정과 Provider 주입 메커니즘을 소스 코드 레벨에서 분석합니다. ConfigService에서 환경변수가 조회되지 않는 문제의 근본 원인과 올바른 해결 방법을 실전 경험을 바탕으로 상세히 설명합니다."
+# TODO: 이미지 최적화 권장사항
+# 1. Unsplash 이미지를 다운로드하여 /public/images/blog/ 에 저장
+# 2. WebP 포맷으로 변환
+# 3. 파일명: nestjs-configmodule-guide.webp
+# 4. image 속성을 "/images/blog/nestjs-configmodule-guide.webp"로 변경
 image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1200&h=630&fit=crop"
+imageAlt: "NestJS 프레임워크 코드 구조 - ConfigModule과 DynamicModule 아키텍처 다이어그램"
 category: "NestJS"
-tags: ["nestjs", "config", "backend", "troubleshooting"]
+tags: ["nestjs", "config", "backend", "troubleshooting", "dependency-injection"]
+keywords: ["NestJS ConfigModule", "ConfigService 값 조회 안됨", "NestJS 환경변수 설정", "DynamicModule 동작 원리", "Provider 주입 메커니즘", "NestJS forRoot", "Dependency Injection", "AWS Secrets Manager", "NestJS 문제 해결", "isGlobal true"]
 draft: false
 ---
 

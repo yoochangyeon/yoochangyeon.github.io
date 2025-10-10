@@ -1,0 +1,27 @@
+---
+import { SITE } from 'astrowind:config';
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: SITE.name,
+  url: SITE.site,
+  description: '기술과 개발에 대한 생각을 나누는 공간. 유창연(Enoch)의 개발 블로그입니다.',
+  inLanguage: 'ko-KR',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: `${SITE.site}/blog?q={search_term_string}`,
+    },
+    'query-input': 'required name=search_term_string',
+  },
+  publisher: {
+    '@type': 'Person',
+    name: '유창연',
+    url: `${SITE.site}/about`,
+  },
+};
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />

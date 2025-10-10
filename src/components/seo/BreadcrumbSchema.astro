@@ -1,0 +1,29 @@
+---
+import { SITE } from 'astrowind:config';
+
+export interface BreadcrumbItem {
+  name: string;
+  url: string;
+}
+
+export interface Props {
+  items: BreadcrumbItem[];
+}
+
+const { items } = Astro.props;
+
+const breadcrumbList = items.map((item, index) => ({
+  '@type': 'ListItem',
+  position: index + 1,
+  name: item.name,
+  item: item.url.startsWith('http') ? item.url : `${SITE.site}${item.url}`,
+}));
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: breadcrumbList,
+};
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(schema)} />
