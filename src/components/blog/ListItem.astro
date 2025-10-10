@@ -20,17 +20,17 @@ const image = (await findImage(post.image)) as ImageMetadata | undefined;
 const link = APP_BLOG?.post?.isEnabled ? getPermalink(post.permalink, 'post') : '';
 ---
 
-<article class="bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all overflow-hidden group">
-  <a href={link ?? 'javascript:void(0)'} class="flex gap-4 p-4">
+<article class="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all overflow-hidden group">
+  <a href={link ?? 'javascript:void(0)'} class="flex flex-col sm:flex-row gap-3 sm:gap-4 p-3 sm:p-4">
     <!-- Thumbnail (if image exists) -->
     {image && (
-      <div class="flex-shrink-0 w-40 h-28">
+      <div class="flex-shrink-0 w-full sm:w-40 h-48 sm:h-28">
         <Image
           src={image}
           class="w-full h-full object-cover rounded"
           widths={[200, 400]}
           width={400}
-          sizes="160px"
+          sizes="(max-width: 640px) 100vw, 160px"
           alt={post.title}
           aspectRatio="16:9"
           loading="lazy"

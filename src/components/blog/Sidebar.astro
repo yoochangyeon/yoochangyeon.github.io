@@ -2,6 +2,8 @@
 import { getCollection } from 'astro:content';
 import { getPermalink, cleanSlug } from '~/utils/permalinks';
 import authorData from '~/data/author.json';
+import { Image } from 'astro:assets';
+import profileImage from '~/assets/images/avatar.png';
 
 const { name, nameEn, tagline } = authorData;
 
@@ -26,11 +28,15 @@ const totalPosts = publishedPosts.length;
 
 <aside class="space-y-8">
   <!-- Profile Section -->
-  <div class="bg-white dark:bg-slate-900 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+  <div class="bg-white dark:bg-neutral-900 rounded-lg p-6 border border-gray-200 dark:border-neutral-700">
     <div class="flex items-center gap-4 mb-4">
-      <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold shadow-md flex-shrink-0">
-        {name.charAt(0)}
-      </div>
+      <Image
+        src={profileImage}
+        alt={name}
+        width={64}
+        height={64}
+        class="w-16 h-16 rounded-full bg-white border-2 border-gray-200 dark:border-neutral-700 shadow-md flex-shrink-0"
+      />
       <div>
         <h3 class="text-lg font-bold text-gray-900 dark:text-white">
           {name}
@@ -46,7 +52,7 @@ const totalPosts = publishedPosts.length;
   </div>
 
   <!-- Category Tree -->
-  <div class="bg-white dark:bg-slate-900 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+  <div class="bg-white dark:bg-neutral-900 rounded-lg p-6 border border-gray-200 dark:border-neutral-700">
     <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
       카테고리
     </h3>
@@ -55,7 +61,7 @@ const totalPosts = publishedPosts.length;
       <!-- All Posts -->
       <a
         href={getPermalink('/blog')}
-        class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group"
+        class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors group"
       >
         <span class="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">
           전체 글
@@ -69,7 +75,7 @@ const totalPosts = publishedPosts.length;
       {categories.map(({ name, count }) => (
         <a
           href={getPermalink(cleanSlug(name), 'category')}
-          class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group"
+          class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors group"
         >
           <span class="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">
             {name}

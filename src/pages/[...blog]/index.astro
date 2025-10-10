@@ -71,7 +71,7 @@ const metadata = merge(
     <BreadcrumbSchema items={breadcrumbItems} />
   </Fragment>
 
-  <SinglePost post={{ ...post, image: image }} url={url}>
+  <SinglePost post={{ ...post, image: image }} url={url} headings={post.headings || []}>
     {post.Content ? <post.Content /> : <Fragment set:html={post.content || ''} />}
   </SinglePost>
   <ToBlogLink />

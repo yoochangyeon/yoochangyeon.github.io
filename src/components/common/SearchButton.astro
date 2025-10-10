@@ -1,0 +1,25 @@
+---
+import { Icon } from 'astro-icon/components';
+---
+
+<button
+  id="search-button"
+  type="button"
+  class="text-muted dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5 inline-flex items-center"
+  aria-label="게시글 검색"
+  title="게시글 검색"
+>
+  <Icon name="tabler:search" class="w-5 h-5" />
+</button>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const searchButton = document.getElementById('search-button');
+    if (searchButton) {
+      searchButton.addEventListener('click', () => {
+        const event = new CustomEvent('open-search-modal');
+        window.dispatchEvent(event);
+      });
+    }
+  });
+</script>

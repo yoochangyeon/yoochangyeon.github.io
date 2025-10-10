@@ -34,7 +34,7 @@ const shareUrls = {
 };
 ---
 
-<div class="share-buttons flex items-center gap-3 mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+<div class="share-buttons flex items-center gap-3 mt-8 pt-6 border-t border-gray-200 dark:border-neutral-700">
   <span class="text-sm font-medium text-gray-700 dark:text-gray-300">공유하기:</span>
 
   <!-- Twitter/X -->
@@ -42,7 +42,7 @@ const shareUrls = {
     href={shareUrls.twitter}
     target="_blank"
     rel="noopener noreferrer"
-    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#1DA1F2] dark:bg-gray-800 dark:hover:bg-[#1DA1F2] transition-colors group"
+    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#1DA1F2] dark:bg-neutral-800 dark:hover:bg-[#1DA1F2] transition-colors group"
     aria-label="Twitter에 공유"
     title="Twitter에 공유"
   >
@@ -56,7 +56,7 @@ const shareUrls = {
     href={shareUrls.facebook}
     target="_blank"
     rel="noopener noreferrer"
-    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#1877F2] dark:bg-gray-800 dark:hover:bg-[#1877F2] transition-colors group"
+    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#1877F2] dark:bg-neutral-800 dark:hover:bg-[#1877F2] transition-colors group"
     aria-label="Facebook에 공유"
     title="Facebook에 공유"
   >
@@ -70,7 +70,7 @@ const shareUrls = {
     href={shareUrls.linkedin}
     target="_blank"
     rel="noopener noreferrer"
-    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#0A66C2] dark:bg-gray-800 dark:hover:bg-[#0A66C2] transition-colors group"
+    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-[#0A66C2] dark:bg-neutral-800 dark:hover:bg-[#0A66C2] transition-colors group"
     aria-label="LinkedIn에 공유"
     title="LinkedIn에 공유"
   >
@@ -82,7 +82,7 @@ const shareUrls = {
   <!-- URL 복사 -->
   <button
     type="button"
-    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-600 transition-colors group"
+    class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-300 dark:bg-neutral-800 dark:hover:bg-neutral-600 transition-colors group"
     aria-label="URL 복사"
     title="URL 복사"
     onclick={`
