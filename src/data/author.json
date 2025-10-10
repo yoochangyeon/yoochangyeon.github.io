@@ -1,0 +1,10 @@
+{
+  "name": "유창연",
+  "nameEn": "Enoch",
+  "tagline": "맨땅에 헤딩 합니다",
+  "avatar": "~/assets/images/author.jpg",
+  "social": {
+    "github": "https://github.com/yoochangyeon",
+    "email": "changyeony@gmail.com"
+  }
+}

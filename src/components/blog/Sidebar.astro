@@ -1,0 +1,84 @@
+---
+import { getCollection } from 'astro:content';
+import { getPermalink, cleanSlug } from '~/utils/permalinks';
+import authorData from '~/data/author.json';
+
+const { name, nameEn, tagline } = authorData;
+
+// Get all posts and count by category
+const posts = await getCollection('post');
+const publishedPosts = posts.filter((post) => !post.data.draft);
+
+const categoryMap = new Map<string, number>();
+publishedPosts.forEach((post) => {
+  const category = post.data.category;
+  if (category) {
+    categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+  }
+});
+
+const categories = Array.from(categoryMap.entries())
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count);
+
+const totalPosts = publishedPosts.length;
+---
+
+<aside class="space-y-8">
+  <!-- Profile Section -->
+  <div class="bg-white dark:bg-slate-900 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+    <div class="flex items-center gap-4 mb-4">
+      <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold shadow-md flex-shrink-0">
+        {name.charAt(0)}
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white">
+          {name}
+        </h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          {nameEn}
+        </p>
+      </div>
+    </div>
+    <p class="text-sm text-gray-700 dark:text-gray-300">
+      {tagline}
+    </p>
+  </div>
+
+  <!-- Category Tree -->
+  <div class="bg-white dark:bg-slate-900 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+      카테고리
+    </h3>
+
+    <nav class="space-y-2">
+      <!-- All Posts -->
+      <a
+        href={getPermalink('/blog')}
+        class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group"
+      >
+        <span class="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">
+          전체 글
+        </span>
+        <span class="text-sm text-gray-500 dark:text-gray-400">
+          {totalPosts}
+        </span>
+      </a>
+
+      <!-- Categories -->
+      {categories.map(({ name, count }) => (
+        <a
+          href={getPermalink(cleanSlug(name), 'category')}
+          class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group"
+        >
+          <span class="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+            {name}
+          </span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {count}
+          </span>
+        </a>
+      ))}
+    </nav>
+  </div>
+</aside>

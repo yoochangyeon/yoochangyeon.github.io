@@ -1,0 +1,61 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '~/layouts/PageLayout.astro';
+import Headline from '~/components/ui/Headline.astro';
+import { getPermalink, cleanSlug } from '~/utils/permalinks';
+
+const metadata = {
+  title: '카테고리',
+};
+
+// Get all posts and extract unique categories with post counts
+const posts = await getCollection('post');
+const publishedPosts = posts.filter((post) => !post.data.draft);
+
+// Count posts per category
+const categoryMap = new Map<string, number>();
+publishedPosts.forEach((post) => {
+  const category = post.data.category;
+  if (category) {
+    categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+  }
+});
+
+// Convert to array and sort by post count
+const categories = Array.from(categoryMap.entries())
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count);
+---
+
+<Layout metadata={metadata}>
+  <section class="px-4 py-16 sm:px-6 mx-auto lg:px-8 lg:py-20 max-w-4xl">
+    <Headline
+      title="카테고리"
+      subtitle="주제별로 게시글을 탐색해보세요"
+    />
+
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mt-12">
+      {categories.map(({ name, count }) => (
+        <a
+          href={getPermalink(cleanSlug(name), 'category')}
+          class="block p-6 bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors group"
+        >
+          <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+            {name}
+          </h3>
+          <p class="text-gray-600 dark:text-gray-400">
+            {count}개의 게시글
+          </p>
+        </a>
+      ))}
+    </div>
+
+    {categories.length === 0 && (
+      <div class="text-center py-12">
+        <p class="text-gray-600 dark:text-gray-400 text-lg">
+          아직 카테고리가 없습니다.
+        </p>
+      </div>
+    )}
+  </section>
+</Layout>

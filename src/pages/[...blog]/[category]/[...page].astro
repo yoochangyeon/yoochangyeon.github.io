@@ -1,0 +1,62 @@
+---
+import type { InferGetStaticPropsType, GetStaticPaths } from 'astro';
+import { blogCategoryRobots, getStaticPathsBlogCategory } from '~/utils/blog';
+
+import Layout from '~/layouts/PageLayout.astro';
+import BlogList from '~/components/blog/List.astro';
+import Pagination from '~/components/blog/Pagination.astro';
+import BlogSidebar from '~/components/blog/Sidebar.astro';
+
+export const prerender = true;
+
+export const getStaticPaths = (async ({ paginate }) => {
+  return await getStaticPathsBlogCategory({ paginate });
+}) satisfies GetStaticPaths;
+
+type Props = InferGetStaticPropsType<typeof getStaticPaths> & { category: Record<string, string> };
+
+const { page, category } = Astro.props as Props;
+
+const currentPage = page.currentPage ?? 1;
+
+const metadata = {
+  title: `Category '${category.title}' ${currentPage > 1 ? ` — Page ${currentPage}` : ''}`,
+  robots: {
+    index: blogCategoryRobots?.index,
+    follow: blogCategoryRobots?.follow,
+  },
+};
+---
+
+<Layout metadata={metadata}>
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Sidebar (Left) -->
+        <div class="lg:col-span-3">
+          <div class="lg:sticky lg:top-24">
+            <BlogSidebar />
+          </div>
+        </div>
+
+        <!-- Main Content (Right) -->
+        <div class="lg:col-span-9">
+          <!-- Category Header -->
+          <div class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
+              {category.title}
+            </h1>
+            <p class="text-gray-600 dark:text-gray-400 mt-2">
+              {page.total}개의 게시글
+            </p>
+          </div>
+
+          <div class="space-y-6">
+            <BlogList posts={page.data} />
+            <Pagination prevUrl={page.url.prev} nextUrl={page.url.next} />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
