@@ -1,0 +1,106 @@
+---
+import { SITE } from 'astrowind:config';
+
+const giscusConfig = (SITE as any).giscus || {};
+const {
+  enabled = false,
+  repo = '',
+  repoId = '',
+  category = '',
+  categoryId = '',
+  mapping = 'pathname',
+  strict = '0',
+  reactionsEnabled = '1',
+  emitMetadata = '0',
+  inputPosition = 'bottom',
+  theme = 'preferred_color_scheme',
+  lang = 'ko',
+} = giscusConfig;
+
+// 댓글 시스템이 비활성화되어 있거나 필수 설정이 없으면 렌더링하지 않음
+if (!enabled || !repo || !repoId || !categoryId) {
+  return null;
+}
+---
+
+<section class="mx-auto px-4 sm:px-6 max-w-3xl mt-8 pt-8 border-t border-gray-200 dark:border-neutral-700">
+  <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white">댓글</h2>
+
+  <div class="giscus-container">
+    <script
+      src="https://giscus.app/client.js"
+      data-repo={repo}
+      data-repo-id={repoId}
+      data-category={category}
+      data-category-id={categoryId}
+      data-mapping={mapping}
+      data-strict={strict}
+      data-reactions-enabled={reactionsEnabled}
+      data-emit-metadata={emitMetadata}
+      data-input-position={inputPosition}
+      data-theme={theme}
+      data-lang={lang}
+      data-loading="lazy"
+      crossorigin="anonymous"
+      async
+    ></script>
+  </div>
+</section>
+
+<script>
+  // 다크모드 토글 시 Giscus 테마 동기화
+  function syncGiscusTheme() {
+    const isDark = document.documentElement.classList.contains('dark');
+    const theme = isDark ? 'dark' : 'light';
+
+    const iframe = document.querySelector<HTMLIFrameElement>('iframe.giscus-frame');
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage(
+        { giscus: { setConfig: { theme } } },
+        'https://giscus.app'
+      );
+    }
+  }
+
+  // 페이지 로드 시 테마 동기화
+  document.addEventListener('astro:page-load', () => {
+    // Giscus가 로드될 때까지 대기
+    const observer = new MutationObserver(() => {
+      const iframe = document.querySelector('iframe.giscus-frame');
+      if (iframe) {
+        syncGiscusTheme();
+        observer.disconnect();
+      }
+    });
+
+    const giscusContainer = document.querySelector('.giscus-container');
+    if (giscusContainer) {
+      observer.observe(giscusContainer, { childList: true, subtree: true });
+    }
+  });
+
+  // 테마 변경 감지
+  const themeObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'class') {
+        syncGiscusTheme();
+      }
+    });
+  });
+
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+</script>
+
+<style>
+  .giscus-container {
+    min-height: 200px;
+  }
+
+  /* Giscus 스타일 커스터마이징 */
+  .giscus-container :global(.giscus-frame) {
+    border-radius: 0.5rem;
+  }
+</style>

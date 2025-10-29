@@ -32,7 +32,7 @@ const filteredHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
   .toc-container {
     position: fixed;
     top: 120px;
-    right: max(1rem, calc((100% - 1280px) / 2));
+    right: max(1rem, calc((100% - 768px) / 2 - 250px - 2rem));
     width: 250px;
     max-height: 50vh;
     overflow-y: auto;
@@ -41,7 +41,7 @@ const filteredHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
   @media (min-width: 1536px) {
     .toc-container {
-      right: max(1.5rem, calc((100% - 1280px) / 2));
+      right: max(1.5rem, calc((100% - 768px) / 2 - 280px - 2rem));
       width: 280px;
     }
   }
@@ -138,17 +138,17 @@ const filteredHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
   /* Webkit browsers (Chrome, Safari, Edge) */
   .toc-container::-webkit-scrollbar {
-    width: 3px;
+    width: 2px;
   }
 
   .toc-container::-webkit-scrollbar-track {
     background: transparent;
-    margin: 0.5rem 0;
+    margin: 0.25rem 0;
   }
 
   .toc-container::-webkit-scrollbar-thumb {
     background: rgb(209, 213, 219);
-    border-radius: 3px;
+    border-radius: 2px;
   }
 
   .toc-container::-webkit-scrollbar-thumb:hover {

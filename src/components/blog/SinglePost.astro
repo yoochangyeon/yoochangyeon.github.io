@@ -5,6 +5,7 @@ import Image from '~/components/common/Image.astro';
 import PostTags from '~/components/blog/Tags.astro';
 import SocialShare from '~/components/common/SocialShare.astro';
 import TableOfContents from '~/components/blog/TableOfContents.astro';
+import Comments from '~/components/blog/Comments.astro';
 
 import { getPermalink } from '~/utils/permalinks';
 import { getFormattedDate } from '~/utils/utils';
@@ -105,4 +106,7 @@ const { post, url, headings = [] } = Astro.props;
       <SocialShare url={url} text={post.title} class="mt-5 sm:mt-1 align-middle text-gray-500 dark:text-neutral-600" />
     </div>
   </article>
+
+  <!-- Comments Section -->
+  <Comments />
 </section>
