@@ -18,6 +18,26 @@ site:
   # 예: content="xyz789ghi012" → naverSiteVerificationId: "xyz789ghi012"
   naverSiteVerificationId: false
 
+  # Giscus 댓글 시스템 설정
+  # 1. https://giscus.app/ko 접속
+  # 2. GitHub 저장소 연결 (yoochangyeon/yoochangyeon.github.io)
+  # 3. giscus 앱 설치: https://github.com/apps/giscus
+  # 4. 저장소 설정 > Discussions 활성화
+  # 5. 아래 설정값들을 생성된 값으로 교체
+  giscus:
+    enabled: true  # 댓글 활성화
+    repo: 'yoochangyeon/yoochangyeon.github.io'
+    repoId: 'MDEwOlJlcG9zaXRvcnkzNDY5NDY4MDM='
+    category: 'General'
+    categoryId: 'DIC_kwDOFK38884CxNuO'
+    mapping: 'pathname'
+    strict: '0'
+    reactionsEnabled: '1'
+    emitMetadata: '0'
+    inputPosition: 'bottom'
+    theme: 'preferred_color_scheme'
+    lang: 'ko'
+
 # Default SEO metadata
 metadata:
   title:
@@ -96,23 +116,3 @@ analytics:
 
 ui:
   theme: 'system' # Values: "system" | "light" | "dark" | "light:only" | "dark:only"
-
-# Giscus 댓글 시스템 설정
-# 1. https://giscus.app/ko 접속
-# 2. GitHub 저장소 연결 (yoochangyeon/yoochangyeon.github.io)
-# 3. giscus 앱 설치: https://github.com/apps/giscus
-# 4. 저장소 설정 > Discussions 활성화
-# 5. 아래 설정값들을 생성된 값으로 교체
-giscus:
-  enabled: true  # 댓글 활성화
-  repo: 'yoochangyeon/yoochangyeon.github.io'  # GitHub 저장소 (username/repo)
-  repoId: 'MDEwOlJlcG9zaXRvcnkzNDY5NDY4MDM='  # giscus.app에서 생성된 repo ID
-  category: 'General'  # Discussion 카테고리 이름
-  categoryId: 'DIC_kwDOFK38884CxNuO'  # giscus.app에서 생성된 category ID
-  mapping: 'pathname'  # 페이지-Discussion 매핑 방식: pathname | url | title | og:title
-  strict: '0'  # 엄격한 제목 매칭: 0 | 1
-  reactionsEnabled: '1'  # 반응 이모지 활성화: 0 | 1
-  emitMetadata: '0'  # 메타데이터 전송: 0 | 1
-  inputPosition: 'bottom'  # 댓글 입력창 위치: top | bottom
-  theme: 'preferred_color_scheme'  # 테마: light | dark | preferred_color_scheme | custom
-  lang: 'ko'  # 언어: ko | en | es | fr | de | ja | zh-CN 등
