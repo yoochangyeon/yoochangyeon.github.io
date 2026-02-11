@@ -1,0 +1,276 @@
+---
+publishDate: 2021-08-10T00:00:00Z
+author: "유창연"
+title: "ubuntu Jenkins + Tomcat 연동"
+image: "~/assets/images/posts/jenkins-tomcat-integration/image-0.png"
+excerpt: "Jenkins 빌드 서버와 Tomcat 배포 서버를 연동하는 방법을 정리합니다. SSH 키 교환, 플러그인 설정, GitHub 연동까지 다룹니다."
+category: "DevOps"
+tags: ["jenkins","tomcat","deployment"]
+draft: false
+---
+
+빌드서버와 배포서버를 나누어 운영하려고 한다.
+
+빌드는 Jenkins를 이용해 빌드를 할 예정이고 Spring Boot + maven 빌드를 이용해 war파일을 생성할 예정이다.또한 properties 파일은 빌드서버 디렉토리에 따로 보관하여 Jenkins 빌드 Excute Shell을 이용하여 파일을 복사해줄 것이다.
+
+두 EC2간 키 교환은 약간은 헷갈리고 어려운 부분이 있다.
+
+**1. JDK 설치**
+
+sudo apt-get update
+
+sudo apt-get install openjdk-8-jdk
+
+****
+
+**2. 톰캣 공식 문서에서 tomcat8 버전 클릭**
+
+[https://tomcat.apache.org/download-80.cgi](https://tomcat.apache.org/download-80.cgi)****
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-0.png)
+
+**3. Core - tar.gz 링크 복사하기**
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-1.png)
+
+**4. tomcat을 설치하고 싶은 위치 (/usr/local) 에서**
+
+wget [복사한 링크]
+
+wget [https://mirror.navercorp.com/apache/tomcat/tomcat-8/v8.5.69/bin/apache-tomcat-8.5.69.tar.gz](https://mirror.navercorp.com/apache/tomcat/tomcat-8/v8.5.69/bin/apache-tomcat-8.5.69.tar.gz)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-2.png)
+
+**5. 압축해제**
+
+sudo tar xvf apache-tomcat-8.5.69.tar.gz
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-3.png)
+
+**6. tomcat 유저 추가**
+
+sudo adduser tomcat
+
+이후 나오는 모든 문항 enter
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-4.png)
+
+**7. 권한 설정**
+
+sudo chown -R tomcat:tomcat apache-tomcat-8.5.69
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-5.png)
+
+**8. bin 폴더 권한 설정**
+
+cd apache-tomcat-8.5.69
+
+sudo chmod -R 777 bin
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-6.png)
+
+**9. 유저 변경**
+
+sudo su tomcat
+
+****
+
+**10. 홈 디렉토리 이동**
+
+cd
+
+****
+
+**11. rsa 키 생성 (이후 나오는 모든 항목 enter)**
+
+ssh-keygen -t rsa -b 4096 -m pem (권장)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-7.png)
+
+**11. Jenkins EC2 접속 :**jenkins 유저로 접속
+
+sudo su jenkins
+
+****
+
+**12. 홈 디렉토리 이동**
+
+cd
+
+****
+
+**13. rsa 키 생성 (이후 나오는 모든 항목 enter)**
+
+ssh-keygen -t rsa -b 4096 -m pem (권장)
+
+****
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-8.png)
+
+**14. 공개키 확인 이후 복사**
+
+cat .ssh/id_rsa.pub
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-9.png)
+
+****
+
+**15. 톰캣 EC2 접속 : 톰캣 유저로 접속**
+
+sudo su tomcat
+
+****
+
+**16. 홈 디렉토리 이동**
+
+cd
+
+****
+
+**17. 공개키 붙여넣기**
+
+sudo vi /.ssh/authorized_keys
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-10.png)
+
+**18. Jenkins 관리 페이지 접속**
+
+**19. 플러그인 관리 클릭**
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-11.png)
+
+****
+
+**20. 설치 가능 목록에서**
+
+**publish over ssh, deploy to container 체크**
+
+**Download now and install after restart 클릭**
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-12.png)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-13.png)
+
+**21. Jenkins 관리 - 시스템 설정 - publish over ssh**
+
+Path to Key에 개인키 경로 입력 (/var/lib/jenkins/.ssh/id_rsa)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-14.png)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-15.png)
+
+****
+
+**22. SSH servers에 톰캣 서버 등록**
+
+Hostname : ip주소
+
+Username : tomcat
+
+Remote Directory : 톰캣 설치 위치
+
+Port : ssh 포트 번호
+
+**23. Test Configuration 클릭 이후 Success 확인**
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-16.png)
+
+****
+
+**24. JDK 경로 설정 (install automatically 체크 해제)**
+
+Name : 자유
+
+JAVA_HOME : /usr/lib/jvm/java-8-openjdk-amd64
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-17.png)
+
+****
+
+**25. Global Properties**
+
+Environment variables 체크 이후 아래와 같이 설정
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-18.png)
+
+**26. Maven**
+
+install automatically 체크 이후 Name 자유롭게 설정
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-19.png)
+
+****
+
+**27. Jenkins - 새로운 item - 이름 작성 - Freestyle project 클릭 - 생성**
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-20.png)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-21.png)
+
+****
+
+**28. Github 연동**
+
+Repository URL 입력
+
+Credentials - Add - jenkins클릭 - github username, password 입력
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-22.png)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-23.png)
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-24.png)
+
+****
+
+**빌드 환경 Send files or execute commands over SSH after the build runs 체크**
+
+SSH 서버는 등록해놨던 톰캣 서버로 선택
+
+나머지는 아래와 같이 등록
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-25.png)
+
+**29. Build - Execute shell을 이용하여 properties 파일 복제**
+
+Jenkins Ec2 접속
+
+sudo su jenkins
+
+cd
+
+mkdir deploy
+
+cd deploy
+
+mkdir config
+
+cd config
+
+vi application.properties
+
+이후 설정파일 붙여넣기
+
+![](~/assets/images/posts/jenkins-tomcat-integration/image-26.png)
+
+****
+
+**30. invoke top - level Maven targets**
+
+**Goals : clean package war:war**
+
+**오류와 해결법**
+
+빌드서버에서 ssh-kegen으로 rsa 키를 생성할 때 private키의 시작부가 다르게 생성되는 경우가 있었다. ssh-keygen -t rsa 만 입력해서 키를 생성했었고 이는 tomcat에 authorized_keys에 등록해도 key pair가 일치하지 않았다.
+
+("Failed to connect or change directory
+
+jenkins.plugins.publish_over.BapPublisherException: Failed to add SSH key. Message [invalid privatekey: ")
+
+****
+
+빌드서버에서 다음과 같이 입력하면 되었다
+
+ssh-keygen -t rsa -b 4096 -m PEM
+
+****

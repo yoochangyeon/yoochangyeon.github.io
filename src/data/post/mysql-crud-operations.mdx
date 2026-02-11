@@ -1,0 +1,146 @@
+---
+publishDate: 2021-04-09T00:00:00Z
+author: "유창연"
+title: "[MySQL] MySQL에서의 CRUD (Create, Read, Update, Delete)"
+image: "~/assets/images/posts/mysql-crud-operations/image-0.png"
+excerpt: "MySQL에서 INSERT, SELECT, UPDATE, DELETE 기본 CRUD 구문의 사용법을 실습 예제와 함께 정리합니다."
+category: "Backend"
+tags: ["mysql","crud","database"]
+draft: false
+---
+
+### [MySQL] MySQL에서의 CRUD (Create, Read, Update, Delete)
+
+테이블에 데이터를 넣기 위해서 먼저 테이블의 속성을 확인해야한다.
+
+```xml
+DESC book;
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-0.png)
+
+book이라는 테이블의 속성은 4가지이다. id, title, author, time
+
+## Create
+
+> INSERT
+
+```xml
+INSERT INTO book (title,author,time) VALUES('MySQL','fluent',NOW());
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-1.png)
+
+INSERT INTO 테이블이름 (속성1,속성2,속성3) VALUES('속성1값','속성2값',NOW함수);
+
+INSERT구문을 사용하여서 자료를 삽입할 수 있다.
+
+id는 auto_increment를 해두었기 때문에 입력하지 않아도 괜찮다.
+
+---
+
+## READ
+
+> **SELECT**
+
+테이블에 저장된 데이터를 확인하는 방법
+
+```xml
+SELECT * FROM book;
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-2.png)
+
+SELECT * FROM 테이블이름;
+
+위 구문을 사용하여서 book이라는 테이블에 저장된 데이터를 확인했다.
+
+별표(*)은 book의 모든 속성을 확인하는 방법이였고
+
+별표 대신에 원하는 속성들을 넣어 데이터를 확인할 수 있다.
+
+```xml
+SELECT id,title FROM book;
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-3.png)
+
+선택한 id와 title만 보이는것을 확인할 수 있다.
+
+---
+
+> WHERE
+
+![](~/assets/images/posts/mysql-crud-operations/image-4.png)
+
+데이터를 추가시켜보았다. author가 fluent인 데이터만 뽑아서 확인할 수는 없을까?
+
+```xml
+SELECT title,author FROM book WHERE author='fluent';
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-5.png)
+
+WHERE 속성이름 = '값'; 을 사용하여서 author가 fluent인 자료들만 뽑았다.
+
+---
+
+> **ORDER**
+
+자료를 어떠한 기준으로 정렬할 수 있다.
+
+```xml
+SELECT * FROM book WHERE author='fluent' ORDER BY id DESC;
+```
+
+![](~/assets/images/posts/mysql-crud-operations/image-6.png)
+
+저자가 fluent인 데이터들을 id 내림차순으로 정렬해보았다.
+
+DESC는 내림차순을 나타내는 구문이다.
+
+이외에도 여러가지 구문들을 혼합하여서 SELECT를 사용할 수 있다.
+
+---
+
+## UPDATE
+
+![](~/assets/images/posts/mysql-crud-operations/image-7.png)
+
+4번 데이터의 author가 notfluent로 되어있는데 마음에 들지 않아 fluent로 바꾸어 보려고 한다.
+
+```xml
+UPDATE book SET author='fluent' WHERE id=4;
+```
+
+UPDATE 테이블이름 SET 바꿀속성='값'
+
+이 뒤에 WHERE을 사용해서 바꿀 데이터 id를 지정해준다.
+
+![](~/assets/images/posts/mysql-crud-operations/image-8.png)
+
+---
+
+## DELETE
+
+데이터를 삭제하는것은 언제나 조심해야한다.
+
+```xml
+DELETE FROM book WHERE id = 4;
+```
+
+DELETE FROM 테이블이름과 WHERE을 사용해 id를 지정해주면 해당 id 데이터를 삭제할 수 있다.
+
+![](~/assets/images/posts/mysql-crud-operations/image-9.png)
+
+삭제된 모습을 확인할 수 있다.
+
+---
+
+> **참고자료**
+
+[https://dev.mysql.com/doc/refman/8.0/en/loading-tables.html](https://dev.mysql.com/doc/refman/8.0/en/loading-tables.html)
+
+[https://opentutorials.org/course/3161/19538](https://opentutorials.org/course/3161/19538)
+
+[https://www.mysqltutorial.org/basic-mysql-tutorial.aspx](https://www.mysqltutorial.org/basic-mysql-tutorial.aspx)

@@ -1,0 +1,106 @@
+---
+publishDate: 2021-07-17T00:00:00Z
+author: "유창연"
+title: "AWS S3 + CloudFront로 signedUrl 사용하기"
+image: "~/assets/images/posts/aws-s3-cloudfront-signed-url/image-0.png"
+excerpt: "AWS S3에 CloudFront를 연동하고 Signed URL을 생성하는 방법을 단계별로 안내합니다. OAI 설정과 Java 코드 예제를 포함합니다."
+category: "DevOps"
+tags: ["aws","s3","cloudfront","signed-url"]
+draft: false
+---
+
+운영중인 서비스 S3에 CloudFront가 붙어 있긴 했지만 CloudFront를 거치지 않고 S3만을 사용하고 있었다.
+
+S3에서 바로 signedUrl을 만들어 사용하고 있었다. 이에 CloudFront를 붙여 signedUrl을 만드는 방식으로 바꾸기로 했다.
+
+아래 S3에 CloudFront를 붙인다.
+
+#### **S3 버킷 생성**
+
+S3 버킷은 이미 생성되어 있다는 가정에 작성하기 때문에 버킷 생성 설명은 건너 뛴다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-0.png)
+
+#### 
+
+#### **CloudFront Distribution 생성**
+
+AWS CloudFront에 Distributions에 들어간다.
+
+Create Distribution으로 새로운 Distribution을 만들어준다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-1.png)
+
+- Origin Domain Name: 생성한 S3 버킷을 연동해준다 (클릭하면 자동으로 연동 가능한 S3버킷이 나온다)
+- Name : Origin Domain Name을 선택해주면 자동으로 생성된다. 한개의 S3 버킷에 여러개의 CloudFront를 붙여주면 이름이 생성되는 Name이 자동으로 변하는 것 같다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-2.png)
+
+#### 
+
+#### **Bucket Access 설정**
+
+- S3 bucket access : Yes 선택 후 OAI를 생성해서 선택해준다. (미리 생성한 OAI가 있다면 그걸 선택해도 괜찮다.)
+- Bucket policy : Yes를 선택해준다. 위에서 선택한 OAI의 접근을 S3에 자동으로 등록해준다. No를 선택하면 직접 설정해줘야하기 때문에 가급적 Yes를 선택해준다.
+
+나머지 설정값들은 건들지 않고 기본 설정을 사용했다.
+
+추가 옵션에 대한 설명들은 [AWS 공식 문서를 참고하면 좋다.](https://docs.aws.amazon.com/ko_kr/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html)
+
+#### 
+
+#### **S3에서 설정 확인**
+
+Distribution을 성성후에 S3에 해당 버킷의 권한 탭에 가서 제대로 등록 되었는지 확인한다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-3.png)
+
+버킷 정책을 확인해보면 Json 형태로 정책이 설정되어있는 것을 확인할 수 있다.
+
+Distribution의 id가 Principal : AWS에 자동으로 등록되어있다.
+
+#### **Public Access 차단 (optional)**
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-4.png)
+
+이후에 퍼블릭 액세스를 차단할 수 있다. S3에 직접 접근을 막고 CloudFront로만 접근할 수 있도록 퍼블릭 액세스를 차단 하는 것이다.
+
+모두 차단이 완료되면 활성 상태가 된다. (지금 서비스 중에 있기 때문에 S3를 막아버리면 클라이언트 쪽에서 접근 불가능 자료들이 있어서 추후에 액세스를 차단할 계획인다.)
+
+#### **CloudFront Key 발급 및 등록**
+
+Signed Url 생성을 위해서 CloudFront Key를 발급받는다.
+
+AWS 내 보안 자격증명에 들어간다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-5.png)
+
+새로운 키 페어를 생성해서 public키와 private키를 다운로드 받는다.
+
+이후 CloudFront에 Key management - public key에 들어가서 퍼블릭 키를 등록해준다.
+
+![](~/assets/images/posts/aws-s3-cloudfront-signed-url/image-6.png)
+
+#### **Java 코드 작성**
+
+Java에서 해당 내용으로 작성해준다. ([공식 문서](https://docs.aws.amazon.com/ko_kr/AmazonCloudFront/latest/DeveloperGuide/CFPrivateDistJavaDevelopment.html)에는 다른 예제도 있지만 이 예제를 사용했다.)
+
+```java
+Protocol protocol = Protocol.http;
+String distributionDomain = "d1b2c3a4g5h6.cloudfront.net";
+File privateKeyFile = new File("/path/to/cfcurlCloud/rsa-private-key.pem");
+String s3ObjectKey = "a/b/images.jpeg";
+String keyPairId = "APKAJCEOKRHC3XIVU5NA";
+Date dateLessThan = DateUtils.parseISO8601Date("2012-11-14T22:20:00.000Z");
+Date dateGreaterThan = DateUtils.parseISO8601Date("2011-11-14T22:20:00.000Z");
+String ipRange = "192.168.0.1/24";
+
+String url1 = CloudFrontUrlSigner.getSignedURLWithCannedPolicy(
+              protocol, distributionDomain, privateKeyFile,
+              s3ObjectKey, keyPairId, dateLessThan);
+
+String url2 = CloudFrontUrlSigner.getSignedURLWithCustomPolicy(
+              protocol, distributionDomain, privateKeyFile,
+              s3ObjectKey, keyPairId, dateLessThan,
+              dateGreaterThan, ipRange);
+```

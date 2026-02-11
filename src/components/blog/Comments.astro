@@ -1,7 +1,7 @@
 ---
 import { SITE } from 'astrowind:config';
 
-const giscusConfig = (SITE as any).giscus || {};
+const giscusConfig = SITE.giscus || {};
 const {
   enabled = false,
   repo = '',
@@ -26,66 +26,83 @@ if (!enabled || !repo || !repoId || !categoryId) {
 <section class="mx-auto px-4 sm:px-6 max-w-3xl mt-8 pt-8 border-t border-gray-200 dark:border-neutral-700">
   <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white">댓글</h2>
 
-  <div class="giscus-container">
-    <script
-      src="https://giscus.app/client.js"
-      data-repo={repo}
-      data-repo-id={repoId}
-      data-category={category}
-      data-category-id={categoryId}
-      data-mapping={mapping}
-      data-strict={strict}
-      data-reactions-enabled={reactionsEnabled}
-      data-emit-metadata={emitMetadata}
-      data-input-position={inputPosition}
-      data-theme={theme}
-      data-lang={lang}
-      data-loading="lazy"
-      crossorigin="anonymous"
-      async
-    ></script>
-  </div>
+  <div
+    class="giscus-container"
+    data-repo={repo}
+    data-repo-id={repoId}
+    data-category={category}
+    data-category-id={categoryId}
+    data-mapping={mapping}
+    data-strict={strict}
+    data-reactions-enabled={reactionsEnabled}
+    data-emit-metadata={emitMetadata}
+    data-input-position={inputPosition}
+    data-lang={lang}
+  ></div>
 </section>
 
 <script>
-  // 다크모드 토글 시 Giscus 테마 동기화
-  function syncGiscusTheme() {
-    const isDark = document.documentElement.classList.contains('dark');
-    const theme = isDark ? 'dark' : 'light';
+  function getGiscusTheme(): string {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  }
 
+  function syncGiscusTheme() {
     const iframe = document.querySelector<HTMLIFrameElement>('iframe.giscus-frame');
     if (iframe?.contentWindow) {
       iframe.contentWindow.postMessage(
-        { giscus: { setConfig: { theme } } },
+        { giscus: { setConfig: { theme: getGiscusTheme() } } },
         'https://giscus.app'
       );
     }
   }
 
-  // 페이지 로드 시 테마 동기화
-  document.addEventListener('astro:page-load', () => {
-    // Giscus가 로드될 때까지 대기
-    const observer = new MutationObserver(() => {
-      const iframe = document.querySelector('iframe.giscus-frame');
-      if (iframe) {
-        syncGiscusTheme();
-        observer.disconnect();
-      }
-    });
+  function loadGiscus() {
+    const container = document.querySelector('.giscus-container');
+    if (!container || container.querySelector('script')) return;
 
-    const giscusContainer = document.querySelector('.giscus-container');
-    if (giscusContainer) {
-      observer.observe(giscusContainer, { childList: true, subtree: true });
-    }
+    const script = document.createElement('script');
+    script.src = 'https://giscus.app/client.js';
+    script.crossOrigin = 'anonymous';
+    script.async = true;
+
+    // data 속성을 script에 복사
+    script.dataset.repo = container.getAttribute('data-repo') || '';
+    script.dataset.repoId = container.getAttribute('data-repo-id') || '';
+    script.dataset.category = container.getAttribute('data-category') || '';
+    script.dataset.categoryId = container.getAttribute('data-category-id') || '';
+    script.dataset.mapping = container.getAttribute('data-mapping') || 'pathname';
+    script.dataset.strict = container.getAttribute('data-strict') || '0';
+    script.dataset.reactionsEnabled = container.getAttribute('data-reactions-enabled') || '1';
+    script.dataset.emitMetadata = container.getAttribute('data-emit-metadata') || '0';
+    script.dataset.inputPosition = container.getAttribute('data-input-position') || 'bottom';
+    script.dataset.lang = container.getAttribute('data-lang') || 'ko';
+    script.dataset.loading = 'lazy';
+    // 실제 블로그 테마에 맞춰 동적으로 설정
+    script.dataset.theme = getGiscusTheme();
+
+    container.appendChild(script);
+  }
+
+  // Giscus iframe 로드 완료 시 테마 재동기화 (message 이벤트 활용)
+  window.addEventListener('message', (event) => {
+    if (event.origin !== 'https://giscus.app') return;
+    if (typeof event.data !== 'object' || !event.data.giscus) return;
+    // Giscus가 준비되면 테마 동기화
+    syncGiscusTheme();
   });
 
-  // 테마 변경 감지
+  // 페이지 로드 시 Giscus 동적 삽입
+  document.addEventListener('astro:page-load', () => {
+    loadGiscus();
+  });
+
+  // 테마 변경 감지 → Giscus 동기화
   const themeObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
+    for (const mutation of mutations) {
       if (mutation.attributeName === 'class') {
         syncGiscusTheme();
       }
-    });
+    }
   });
 
   themeObserver.observe(document.documentElement, {

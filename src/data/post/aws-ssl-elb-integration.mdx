@@ -1,0 +1,111 @@
+---
+publishDate: 2021-08-10T00:00:00Z
+author: "유창연"
+title: "AWS SSL + ELB 아마존 인증서와 EC2 로드밸런서 연동하기"
+image: "~/assets/images/posts/aws-ssl-elb-integration/image-0.png"
+excerpt: "AWS SSL 인증서를 ELB(Application Load Balancer)에 연동하여 EC2에 HTTPS를 적용하는 방법을 정리합니다."
+category: "DevOps"
+tags: ["aws","ssl","elb","load-balancer"]
+draft: false
+---
+
+아마존 인증서를 발급 받는 과정은 [다른 글](https://yoochangyeon.tistory.com/26?category=490327)에서 다루었다.
+
+아마존 인증서를 EC2에 붙이기 위해서는 로드밸런서를 이용하는 방법이 있다.
+
+**1. AWS 콘솔 - EC2 - 로드밸런싱 - 로드밸런서 - Load Balancer 생성**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-0.png)
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-1.png)
+
+**2. Application Load Balancer 생성**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-2.png)
+
+********
+
+**3. 리스너 HTTP, HTTPS 를 각각 80, 443포트로 추가**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-3.png)
+
+********
+
+**4. VPC 가용 영역 최소 2개 선택**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-4.png)
+
+********
+
+**5. AWS에서 발급받은 인증서 선택**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-5.png)
+
+**6.****새 대상그룹 이름 입력하고 다음**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-6.png)
+
+********
+
+**7. 로드밸런서에 올릴 인스턴스 추가**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-7.png)
+
+**********8.****생성 완료 후 리스너 페이지에서 HTTP - 규칙 아래에 있는 '규칙 보기/편집' 클릭******
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-8.png)
+
+********
+
+**9. 상단에 연필모양 클릭 이후 왼쪽 연필 모양 클릭**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-9.png)
+
+**10. THEN 부분 삭제 이후 리디랙션 대상으로 다시 생성**
+
+********
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-10.png)
+
+**11.****HTTPS, 443포트로 생성후 저장**
+
+********
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-11.png)
+
+********
+
+**12. Route 53에서 레코드 생성**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-12.png)
+
+********
+
+**13. 라우팅 대상 '별칭'을 ON으로 설정한 후 Application/Classic Load Balancer에 대한 별칭 클릭**
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-13.png)
+
+******14. 지역 선택 후 원하는 인스턴스 선택 후에 생성******
+
+![](~/assets/images/posts/aws-ssl-elb-integration/image-14.png)
+
+********
+
+**15. EC2에 접속 후에 nginx 설정 변경 :****HTTPS 접속 차단, 80포트 listen**
+
+```bash
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+  location / {
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header HOST $http_host;
+    proxy_set_header X-NginX-Proxy true;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:8080;
+    proxy_redirect off;
+  }
+}
+```

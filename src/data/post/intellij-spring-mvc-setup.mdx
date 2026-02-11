@@ -1,0 +1,200 @@
+---
+publishDate: 2021-04-09T00:00:00Z
+author: "유창연"
+title: "IntelliJ에서 Spring MVC 환경 만들기"
+image: "~/assets/images/posts/intellij-spring-mvc-setup/image-0.png"
+excerpt: "IntelliJ에서 Maven 기반 Spring MVC 프로젝트를 생성하고 Tomcat 서버로 실행하는 전체 과정을 단계별로 안내합니다."
+category: "Backend"
+tags: ["intellij","spring-mvc","setup"]
+draft: false
+---
+
+## IntelliJ에서 Spring MVC 환경 만들기
+
+> **1. 프로젝트 생성**
+
+File -> newProject -> Maven
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-0.png)
+
+프로젝트 이름은 편한대로 설정해주면 된다.
+
+MyFirstSpringMVC로 만들었다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-1.png)
+
+> **2. 프레임워크 추가**
+
+만들어진 프로젝트에 오른쪽 마우스 -> Add Framework Support
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-2.png)
+
+아래로 쭉 니려서서 Spring -> Spring MVC -> OK!
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-3.png)
+
+Spring MVC가 추가되고 나면 만들었던 프로젝트 안에 여러가지 파일들이 생겨있는 모습을 확인할 수 있다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-4.png)
+
+> **3. web.xml**
+
+web.xml에 들어가 url-pattern을
+
+'/'로 수정해준다. 원래는 *.form이였다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-5.png)
+
+> **4. Project Structure**
+
+IntelliJ 오른쪽 위를 보면 Project Structure버튼 이 있다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-6.png)
+
+Output Layout 탭에 오른쪽 Available Elements에 프로젝트 폴더를 클릭해보면
+
+파일 두개가 나온다
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-7.png)
+
+각 파일을 더블클릭하여 왼쪽으로 옮겨주자
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-8.png)
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-9.png)
+모두 옮겨진 모습
+
+> **5. Dispatcher-servlet.xml**
+
+Dispatcher-servlet.xml 파일에 들어가 아래 코드를 붙여 넣는다.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd
+        http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd">
+
+    <mvc:annotation-driven></mvc:annotation-driven> <!-- Annotation 활성화 -->
+    <context:component-scan base-package="Controller"></context:component-scan> <!-- Component 패키지 지정 -->
+
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <property name="prefix" value="/WEB-INF/views/"></property>
+        <property name="suffix" value=".jsp"></property>
+    </bean>
+
+</beans>
+```
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-10.png)
+
+> **6. views 디렉토리 생성, 파일 옮기기**
+
+web - WEB-INF에 새로운 디렉토리를 만들어준다 디렉토리 이름은 'views'
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-11.png)
+
+index.jsp파일을 views디렉토리 안으로 옮긴다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-12.png)
+
+> **7. Controller 생성**
+
+src - main - java 에 Package를 생성한다 페키지 이름은 Controller
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-13.png)
+
+그 후 페키지 안에 controller라는 클래스도 생성한다
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-14.png)
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-15.png)
+
+controller 클래스 안에는 아래와같이 작성해준다
+
+```java
+package Controller;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+/**
+ * Created by NESOY on 2017-02-04.
+ */
+@Controller
+public class controller {
+
+    @RequestMapping(value = "/")
+    public String test(){
+        return "index";
+    }
+}
+```
+
+> **8. Tomcat서버 추가**
+
+intelliJ 오른쪽 상단 Add Configuration 버튼을 누른다
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-16.png)
+
++ 버튼을 누른 후 Tomcat server -> Local 을 클릭한다
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-17.png)
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-18.png)
+
+그 후, 아래에 있는 Fix 버튼 클릭
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-19.png)
+
+Application context를 '/'으로 수정해준후
+
+Apply -> OK!
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-20.png)
+
+> **\<오류\>**
+
+실행(Run)시켜 보면 아래와 같은 오류가 뜰때가 있다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-21.png)
+
+pom.xml 파일에 들어가서 아래 코드를 추가시킨다.
+
+```xml
+<build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+```
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-22.png)
+
+실행시키면 Tomcat 서버가 실행되고 있다고 뜬다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-23.png)
+
+그 후 아무 웹브라우져로 http://localhost:8080에 들어가면 아래와 같은 화면을 확인할 수 있다.
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-24.png)
+
+![](~/assets/images/posts/intellij-spring-mvc-setup/image-25.png)
+
+> 참고 자료
+
+[https://nesoy.github.io/articles/2017-02/SpringMVC](https://nesoy.github.io/articles/2017-02/SpringMVC)
+
+[https://www.inflearn.com/questions/19302](https://www.inflearn.com/questions/19302)
+
+[https://freehoon.tistory.com/148](https://freehoon.tistory.com/148)

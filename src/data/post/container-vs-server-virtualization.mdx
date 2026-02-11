@@ -1,0 +1,36 @@
+---
+publishDate: 2022-06-22T00:00:00Z
+author: "유창연"
+title: "컨테이너란? (vs 서버 가상화)"
+image: "~/assets/images/posts/container-vs-server-virtualization/image-0.png"
+excerpt: "컨테이너의 개념과 장점을 알아보고, 서버 가상화와의 구조적 차이점을 비교하여 설명합니다."
+category: "DevOps"
+tags: ["container","docker","virtualization"]
+draft: false
+---
+
+# 컨테이너
+
+`컨테이너`란 다른 프로세스와 `격리된 상태`로 OS에서 소프트웨어를 실행하는 기술이다.
+컨테이너에서 실행되는 소프트웨어는 하나의 프로세스로 가동된다.
+
+## 컨테이너의 장점
+
+![](~/assets/images/posts/container-vs-server-virtualization/image-0.png)
+
+1. 환경 의존에서 해방
+컨테이너는 애플리케이션의 가동에 필요한 런타임과 라이브러리를 하나의 패키지로 묶을 수 있다.
+즉 의존 관계가 포함된 패키지가 배포단위이다.
+애플리케이션 의존 관계를 컨테이너 안에 집약할 수 있다.
+2. 환경 구축 및 테스트에 필요한 시간 감소.
+모든 의존관계가 컨테이너 안에서 완결된다. 때문에 애플리케이션 배포나 마이그레이션에 관한 업무가 단순해지며 구축도 간단해진다.
+3. 자원 효율
+컨테이너에서는 게스트 OS와 하드웨어 에뮤레이트를 하지 않아도 되기 때문에 애플리케이션을 실행하기 위해 필요한 컴퓨팅 자원의 소비가 적다.
+
+### 서버 가상화와 차이점
+
+![](~/assets/images/posts/container-vs-server-virtualization/image-1.jpg)
+
+- 서버 가상화는 여러 OS를 하나의 하드웨어에서 실행하는 기술이다.
+- 서버 가상화는 게스트 OS별로 커널을 점유하는 구조다.
+- 컨테이너 기술은 OS와 커널을 공유하고, 프로세스를 분리하는 구조다.

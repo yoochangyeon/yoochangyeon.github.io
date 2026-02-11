@@ -1,0 +1,365 @@
+---
+publishDate: 2025-05-13T00:00:00Z
+author: "유창연"
+title: "Nestjs의 CQRS와 SAGA 패턴"
+image: "~/assets/images/posts/nestjs-cqrs-saga-pattern/image-0.png"
+excerpt: "NestJS에서 CQRS와 SAGA 패턴을 활용하여 복잡한 도메인 로직을 분리하고, 오케스트레이션과 코레오그래피 방식으로 분산 트랜잭션을 관리하는 방법을 정리합니다."
+category: "Backend"
+tags: ["nestjs","cqrs","saga","microservice"]
+draft: false
+---
+
+유저의 회원가입과 회원탈퇴 시에 너무 많은 일을 수행해야 한다?
+
+## 서론
+
+아래에서 CQRS와 SAGA패턴의 개념을 잠시 설명하고 글을 진행하려고 한다.
+처음 설명 부분은 이런게 있구나! 존재만 이해하고 넘어가자.
+글을 진행하면서 내용을 풀어보려고 한다.
+
+### CQRS 패턴이란?
+
+**CQRS(Command Query Responsibility Segregation)**는 이름을 그대로 풀어보자면, 명령(Command)과 조회(Query)를 분리하는 아키텍처 패턴이다.
+명령을 처리하는 쪽(Write Model)과 조회를 담당하는 쪽(Read Model)이 별도로 관리되므로, 확장성, 성능, 복잡성 분산 측면에서 이점을 준다.
+
+### SAGA 패턴이란?
+
+**SAGA**는 여러 마이크로서비스(또는 여러 도메인)에서 일어나는 분산 트랜잭션을 **작은 로컬 트랜잭션**들의 연쇄로 구성하고, 중간에 실패하면 이미 완료된 단계를 되돌리는 **보상 트랜잭션**을 수행함으로써 최종 일관성을 맞추는 패턴이다.
+
+**오케스트레이션**과 **코레오그래피**라는 두 가지 대표 구현 방식이 있으며, NestJS CQRS 모듈의 **@Saga()** 데코레이터로 이벤트 흐름을 제어하는 로직을 작성할 수 있다.
+
+## 이런 고민을 하지 않았는가?
+
+공식문서 (https://docs.nestjs.com/recipes/cqrs)에 있는 내용을 참고해서 설명해보려고 한다.
+일반적으로 NestJS로 애플리케이션을 구현하면 다음 구조가 흔히 등장한다.
+
+1. Controller가 HTTP 요청을 받는다.
+2. Controller는 Service에 로직 처리를 위임한다.
+3. Service는 데이터베이스 접근을 위해 Repository(또는 DAO)를 호출한다.
+4. Entity(또는 Model) 레벨에서 데이터를 조작하고, 그 결과를 반환한다.
+
+작은 규모의 애플리케이션이라면 이러한 전통적 CRUD 구조로도 충분하다.
+그러나 규모가 커지고, **읽기(조회)와 쓰기(갱신) 로직이 복잡하게 분화**되는 대규모 서비스라면,
+
+1. 단일 데이터 모델로 모든 로직을 처리하기 어렵고
+2. 확장(Scalability)이나 성능(Performance) 측면에서 한계가 생길 수 있다.
+
+역시나 구체적인 예시가 없으면 이해가 어렵기 때문에 유저의 회원 가입과 탈퇴가 있는 서비스로 예를 들어보려고 한다.
+
+우리가 새로 만들어진지 얼마 되지 않은, 초기 서비스를 운영하고 있어서, 유저가 회원가입을 할 때와 회원가입 할 때 단순히 아래와 같은 일만 한다고 가정해보자.
+
+### 회원 가입 시점
+
+- 유저 정보를 데이터베이스에 추가하고
+- 유저에게 기본 포인트를 지급한다.
+
+### 회원 탈퇴 시점
+
+- 유저가 보유하고 있는 포인트를 회수하고
+- 데이터베이스에서 유저 정보를 삭제한다.
+
+이정도 로직은, User도메인(UserModule, Service, Controller)에서만 관리해도 될 것 같다.
+
+***이 서비스가 점점 커지면서***, 다양한 기능이 추가되고 이제 회원가입과 탈퇴를 진행할 때 다음과 같은 동작을 하게 되었다.
+
+### 회원 가입 시점
+
+- 유저 정보를 데이터베이스에 추가한다.
+- 유저에게 기본 포인트를 지급한다.
+- 유저에게 회원가입 축하 SNS 메세지를 전송한다.
+- 해당 유저가 회원가입 시 입력한 추천인에게 추가 포인트를 지급한다.
+- 유저에게 회원가입 축하 쿠폰을 지급한다.
+
+### 회원 탈퇴 시점
+
+- 유저가 보유하고 있는 쿠폰을 모두 제거한다.
+- 유저가 보유하고 있는 쿠폰을 제거한다.
+- 유저 정보를 데이터베이스에서 제거한다.
+- 유저에게 회원 탈퇴가 성공적으로 이루어졌음을 SNS 메세지로 전송한다.
+
+갑자기 회원가입이라는 이벤트에서 여러 도메인에 개입하게 되었다.
+위 예시에서는 '포인트', 'SNS 푸시 메세지', '추천인', '쿠폰'등, 유저 도메인이 아닌 다양한 도메인들에 갱신이 발생해야한다.
+
+이렇게 시스템이 복잡해지고, 여러 도메인에 걸친 행동을 취해야할 때, User도메인(UserService)에 코드를 몰아 넣기 부담스럽고, 유지보수가 어려워진다.
+
+이렇게, 여러 서비스(도메인)간 협업이 필요할 때, 각 서비스가 알아서 "유저 회원가입", "유저 회원탈퇴" 이벤트를 구독하고 작업을 처리하거나, 중앙 트랜잭션 흐름을 오케이스트레이션 하는 것을 CQRS패턴, SAGA패턴으로 구현할 수 있다.
+
+## 어떻게 적용하면 좋을까?
+
+### 1. CQRS로 읽기/쓰기를 분리하자
+
+복잡해진 도메인 로직을 "Command(쓰기)"와 "Query(읽기)"로 분리하면, 로직이 각기 독립적으로 확장 가능해진다.
+
+예를 들어, **회원가입/탈퇴** 등의 변경 작업은 여러 서비스(포인트, 쿠폰 등)에 명령을 보내고, **조회**는 UserService와 별도로 조회 전용 DB(또는 캐싱)를 사용하도록 설계할 수 있다.
+
+### 2. SAGA로 분산 트랜잭션/워크플로 관리
+
+여러 서비스에서 동시에 로컬 트랜잭션을 수행하는 환경에서는, 어느 한 단계라도 실패할 경우 전체 트랜잭션을 원복하는 보상(Compensation) 로직이 필요하다.
+
+SAGA 패턴을 적용하면, "유저 가입 -> 포인트 지급 -> 쿠폰 발급 -> 추천인 포인트 지급" 등의 작업 흐름 중간에 실패가 생겼을 때, 이미 지급된 쿠폰/포인트를 취소하는 로직을 순차적으로 실행해 **최종 데이터 일관성**을 맞출 수 있다.
+
+## 오케스트레이션과 코레오그래피
+
+### 1. 오케스트레이션(Orchestration)
+
+**중앙 오케스트레이터**가 전체 프로세스를 제어한다.
+
+회원가입 -> 쿠폰 발급 -> 추천인 포인트 -> 메시지 발송 순으로 흐름을 직접 설계하고, 중간 실패 시 보상 트랜잭션 실행.
+
+중앙에서 흐름을 관리하므로 추적이 쉬우나, 오케스트레이터가 복잡해지면 단일 장애점이 될 수 있다.
+
+### 2. 코레오그래피(Choreography)
+
+**오케스트레이터 없이** 각 서비스가 "UserSignedUpEvent" 같은 이벤트를 구독하고, 필요한 로직을 알아서 수행한다.
+
+**유저 가입 이벤트**가 발행되면, 포인트 서비스, 쿠폰 서비스, 알림 서비스 등이 각각 필요 시 이벤트를 수신해 작업 후 다른 이벤트를 발행할 수도 있다.
+
+분산되어 있어 확장성이 좋지만, 이벤트가 많아질수록 흐름 파악이 어려워지고 오류 처리(중복, 재시도 등) 로직을 세심하게 관리해야 한다.
+
+## 코드로 살펴보자 (드디어)
+
+NestJS는 `@nestjs/cqrs` 모듈을 통해 명령 핸들러(CommandHandler), 이벤트 핸들러(EventHandler), 쿼리 핸들러(QueryHandler) 등을 간편하게 구성할 수 있다.
+
+### CommandBus, QueryBus, EventBus
+
+- 명령/쿼리를 쉽게 정의하고, 실행하고, 결과를 받음
+- 이벤트 발행/구독을 프레임워크 수준에서 지원
+
+### Saga() 데코레이터
+
+- RxJS 기반 이벤트 스트림(`events$`)을 구독해, 특정 이벤트가 발생하면 **새로운 Command**를 발행하거나 후속 로직을 실행할 수 있음
+
+### 오케스트레이션 예시
+
+**회원가입**
+
+- UserService에서 유저 정보를 생성
+- 오케스트레이터에서 포인트/쿠폰 발급, 알림 전송 등의 작업 순차 진행
+- 어느 단계에서 실패 발생 시, 이미 진행된 작업에 대한 보상(Compensation) 로직 실행
+
+**회원탈퇴(삭제)**
+
+- UserService에서 유저 상태를 탈퇴 처리
+- 오케스트레이터에서 보유 쿠폰 무효화, 포인트 회수, 알림 전송 등의 작업 수행
+- 중간 단계 실패 시, 이전 단계 되돌리기
+
+![오케스트레이션 예시 다이어그램](~/assets/images/posts/nestjs-cqrs-saga-pattern/image-1.png)
+
+이 예시에서 **Orchestrator** 역할은 중앙에서 트랜잭션 흐름을 제어한다.
+한 단계 실패 시, 이미 실행된 단계를 **보상(Compensation) 트랜잭션**으로 되돌린다.
+
+Nestjs코드로 구현해보자
+
+```typescript
+// events/user-signed-up.event.ts
+export class UserSignedUpEvent {
+  constructor(public readonly userId: string) {}
+}
+
+// commands/issue-coupon.command.ts
+export class IssueCouponCommand {
+  constructor(public readonly userId: string) {}
+}
+
+// commands/revoke-coupon.command.ts
+export class RevokeCouponCommand {
+  constructor(public readonly userId: string) {}
+}
+
+// commands/assign-points.command.ts
+export class AssignPointsCommand {
+  constructor(public readonly userId: string) {}
+}
+
+// commands/revert-points.command.ts
+export class RevertPointsCommand {
+  constructor(public readonly userId: string) {}
+}
+
+// commands/send-signup-message.command.ts
+export class SendSignupMessageCommand {
+  constructor(public readonly userId: string) {}
+}
+```
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { Saga } from '@nestjs/cqrs';
+import { ofType } from 'rxjs';
+import { map, mergeMap } from 'rxjs/operators';
+import { UserSignedUpEvent } from '../events/user-signed-up.event';
+import { IssueCouponCommand } from '../commands/issue-coupon.command';
+import { CouponIssueFailedEvent, CouponIssuedEvent } from '../events/coupon.events';
+import { AssignPointsCommand } from '../commands/assign-points.command';
+import { PointsAssignedEvent, PointsAssignmentFailedEvent } from '../events/points.events';
+import { SendSignupMessageCommand } from '../commands/send-signup-message.command';
+import { NotificationSentEvent, NotificationFailedEvent } from '../events/notification.events';
+import { RevokeCouponCommand } from '../commands/revoke-coupon.command';
+import { RevertPointsCommand } from '../commands/revert-points.command';
+
+@Injectable()
+export class UserSignupSaga {
+  @Saga()
+  userSignedUp = (events$) => {
+    return events$.pipe(
+      ofType(UserSignedUpEvent),
+      map((event: UserSignedUpEvent) => new IssueCouponCommand(event.userId)),
+    );
+  };
+
+  @Saga()
+  couponIssued = (events$) => {
+    return events$.pipe(
+      ofType(CouponIssuedEvent),
+      map((event: CouponIssuedEvent) => new AssignPointsCommand(event.userId)),
+    );
+  };
+
+  @Saga()
+  couponIssueFailed = (events$) => {
+    return events$.pipe(
+      ofType(CouponIssueFailedEvent),
+      map(() => null),
+    );
+  };
+
+  @Saga()
+  pointsAssigned = (events$) => {
+    return events$.pipe(
+      ofType(PointsAssignedEvent),
+      map((event: PointsAssignedEvent) => new SendSignupMessageCommand(event.userId)),
+    );
+  };
+
+  @Saga()
+  pointsAssignmentFailed = (events$) => {
+    return events$.pipe(
+      ofType(PointsAssignmentFailedEvent),
+      map((event: PointsAssignmentFailedEvent) => new RevokeCouponCommand(event.userId)),
+    );
+  };
+
+  @Saga()
+  notificationSent = (events$) => {
+    return events$.pipe(
+      ofType(NotificationSentEvent),
+      map(() => null),
+    );
+  };
+
+  @Saga()
+  notificationFailed = (events$) => {
+    return events$.pipe(
+      ofType(NotificationFailedEvent),
+      mergeMap((event: NotificationFailedEvent) => {
+        return [
+          new RevertPointsCommand(event.userId),
+          new RevokeCouponCommand(event.userId),
+        ];
+      }),
+    );
+  };
+}
+```
+
+각 단계에서 이벤트를 받아 다음 명령을 발행하거나, 실패 시 보상 커맨드를 실행한다.
+
+회원탈퇴도 거의 동일한 구조를 가지며, "유저 탈퇴 이벤트 -> 쿠폰 무효화 명령 -> 포인트 회수 명령 -> 알림 전송" 등 단계를 관리할 수 있다.
+
+### 코레오그래피(Choreography) 예시
+
+**코레오그래피** 방식에서는 **오케스트레이터**가 없다.
+UserService가 회원가입 이벤트(UserSignedUpEvent)를 발행하면, 각각의 서비스(쿠폰, 포인트, 알림 등)가 이 이벤트를 구독해 독립적으로 후속 작업을 처리한다.
+
+![코레오그래피 예시 다이어그램](~/assets/images/posts/nestjs-cqrs-saga-pattern/image-2.png)
+
+각 서비스는 필요한 **이벤트**만 구독해 자신의 로컬 트랜잭션을 처리하고, 필요 시 또 다른 이벤트를 발행한다.
+회원탈퇴 시나리오도 동일하게 UserDeletedEvent를 구독하여 각 서비스가 포인트 회수, 쿠폰 취소, 알림 전송 등을 각각 처리한다.
+
+```typescript
+// user.controller.ts (UserService 역할)
+@Controller('user')
+export class UserController {
+  constructor(
+    private readonly userService: UserService,
+    private readonly eventBus: EventBus,
+  ) {}
+
+  @Post('signup')
+  async signup(@Body() dto: SignupDto) {
+    const userId = await this.userService.create(dto);
+    this.eventBus.publish(new UserSignedUpEvent(userId));
+    return { success: true, userId };
+  }
+}
+
+// coupon.service.ts
+@Controller()
+export class CouponController {
+  constructor(private readonly couponService: CouponService) {}
+
+  @EventPattern('user_signed_up')
+  async handleUserSignedUp(@Payload() event: UserSignedUpEvent) {
+    const { userId } = event;
+    const result = await this.couponService.issueCoupon(userId);
+    if (result.success) {
+      // e.g. emit 'coupon_issued'
+    } else {
+      // e.g. emit 'coupon_issue_failed'
+    }
+  }
+}
+
+// point.service.ts
+@Controller()
+export class PointController {
+  constructor(private readonly pointService: PointService) {}
+
+  @EventPattern('user_signed_up')
+  async handleUserSignedUp(@Payload() event: UserSignedUpEvent) {
+    const { userId } = event;
+    const result = await this.pointService.assignWelcomePoints(userId);
+    if (result.success) {
+      // e.g. emit 'points_assigned'
+    } else {
+      // e.g. emit 'points_assignment_failed'
+    }
+  }
+}
+
+// notification.service.ts
+@Controller()
+export class NotificationController {
+  constructor(private readonly notificationService: NotificationService) {}
+
+  @EventPattern('user_signed_up')
+  async handleUserSignedUp(@Payload() event: UserSignedUpEvent) {
+    await this.notificationService.sendMessage(event.userId, "가입 축하!");
+  }
+}
+```
+
+메시지 브로커(RabbitMQ, Kafka 등)를 통해 `user_signed_up` 토픽을 발행/구독할 수도 있고, NestJS EventBus를 사용할 수도 있다.
+
+포인트/쿠폰/알림 서비스는 각자 이벤트를 구독해 후속 처리를 수행하므로 중앙의 오케스트레이터 없이 코레오그래피로 연결된다.
+
+## 오케스트레이션과 코레오그래피 비교
+
+### 오케스트레이션
+
+- **중앙 제어** : 별도 **오케스트레이터**(SAGA)를 두어, 전체 트랜잭션 단계 및 순서를 중앙에서 제어
+- **장점** : 로직이 한 군데 모이므로 흐름 파악/디버깅이 쉬움, 각 단계에서 실패 시 보상 트랜잭션을 명확히 정의하기 수월
+- **단점** : 중앙 집중식 구조로 인해 오케스트레이터 복잡도 상승 가능, 단일 장애점(SPOF)이 될 수도 있음
+
+### 코레오그래피
+
+- **중앙 제어** : **오케스트레이터 없음**. 각 서비스가 이벤트 발행/구독으로 자율적으로 협력
+- **장점** : 서비스 간 **느슨한 결합**으로 확장성 우수, 이벤트 기반으로 새로운 서비스도 손쉽게 구독/연동 가능
+- **단점** : 이벤트가 많아지면 전체 흐름 파악이 어려움, 장애/중복 처리 등 모든 서비스가 개별적으로 구현해야 하므로 복잡해질 수 있음
+
+## 정리
+
+1. **CQRS**와 **SAGA**는 큰 규모의 분산 환경에서 **확장성**, **유연성**, **데이터 일관성**을 확보하는 주요 패턴이다.
+2. **NestJS CQRS 모듈**을 사용하면, **Command**, **Query**, **Event**, **Saga** 로직을 일관성 있게 구조화할 수 있으며, 이를 통해 **SAGA 패턴**(오케스트레이션/코레오그래피)도 간단하게 구현 가능하다.
+3. 회원가입/탈퇴 같은 간단해 보이는 기능도, 여러 도메인(포인트, 쿠폰, 메시지, 추천인 등)이 연동되면 복잡해질 수 있으므로, 이벤트 기반 또는 SAGA를 고려해 아키텍처를 설계하는 것이 유리하다.
+4. 단, 이벤트 중복, 장애 복구, 보상 트랜잭션 등 **실무적 이슈**를 철저히 준비해야 하며, 분산 트랜잭션 전반에 대한 로깅/모니터링 체계를 갖춰야 한다.

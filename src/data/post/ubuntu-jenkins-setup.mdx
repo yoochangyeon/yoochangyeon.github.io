@@ -1,0 +1,41 @@
+---
+publishDate: 2021-08-10T00:00:00Z
+author: "유창연"
+title: "빌드 서버 구축 (ubuntu, Jenkins설치)"
+image: "~/assets/images/posts/ubuntu-jenkins-setup/image-0.png"
+excerpt: "Ubuntu EC2에 Jenkins를 설치하여 빌드 서버를 구축하는 방법을 정리합니다. JDK 설치부터 Jenkins 초기 설정까지 안내합니다."
+category: "DevOps"
+tags: ["ubuntu","jenkins","ci-cd"]
+draft: false
+---
+
+- 빌드 서버로 사용할 EC2 생성, EC2 접속
+- jenkins key파일 추가
+- wget -q -O - [https://pkg.jenkins.io/debian-stable/jenkins.io.key](https://pkg.jenkins.io/debian-stable/jenkins.io.key) | sudo apt-key add -
+- sudo sh -c 'echo deb [https://pkg.jenkins.io/debian-stable](https://pkg.jenkins.io/debian-stable) binary/ > /etc/apt/sources.list.d/jenkins.list'
+- apt-get update와 jdk, jenkins 설치
+- sudo apt-get update
+- sudo apt-get install openjdk-8-jdk
+- sudo apt-get install jenkins
+- Jenkins 동작 확인
+- sudo systemctl status jenkins.service jenkins
+- 8080 포트로 접근해서 아래 화면 확인 ex) x.xx.xx.xxx:8080
+![](~/assets/images/posts/ubuntu-jenkins-setup/image-0.png)
+
+- 화면에 나오는 경로 (/var/lib/jenkins/secrets/initialAdminPassword)에서 값 복사해오기
+- sudo su jenkins
+- cd /var/lib/jenkins/secrets/
+- cat initialAdminPassword
+- 확인한 문자열을 Unlock Jenkins에 붙여넣기
+
+![](~/assets/images/posts/ubuntu-jenkins-setup/image-1.png)
+
+![](~/assets/images/posts/ubuntu-jenkins-setup/image-2.png)
+
+![](~/assets/images/posts/ubuntu-jenkins-setup/image-3.png)
+
+- 유저 정보 작성 (본인이 기억할 수 있으면 됨)
+- url 그대로 두고 다음 버튼 클릭
+- Jenkins 페이지 확인
+
+![](~/assets/images/posts/ubuntu-jenkins-setup/image-4.png)

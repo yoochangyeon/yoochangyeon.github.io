@@ -19,6 +19,21 @@ export interface SiteConfig {
   base?: string;
   trailingSlash?: boolean;
   googleSiteVerificationId?: string;
+  naverSiteVerificationId?: string;
+  giscus?: {
+    enabled: boolean;
+    repo: string;
+    repoId: string;
+    category: string;
+    categoryId: string;
+    mapping: string;
+    strict: string;
+    reactionsEnabled: string;
+    emitMetadata: string;
+    inputPosition: string;
+    theme: string;
+    lang: string;
+  };
 }
 export interface MetaDataConfig extends Omit<MetaData, 'title'> {
   title?: {

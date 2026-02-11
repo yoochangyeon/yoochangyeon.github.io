@@ -1,0 +1,173 @@
+---
+publishDate: 2021-04-09T00:00:00Z
+author: "유창연"
+title: "Swagger | 프로젝트 적용, 어노테이션"
+image: "~/assets/images/posts/swagger-annotations-guide/image-0.png"
+excerpt: "Swagger를 Spring 프로젝트에 적용하는 방법과 @ApiOperation, @ApiParam 등 주요 어노테이션 사용법을 정리합니다."
+category: "Backend"
+tags: ["swagger","api-docs","spring"]
+draft: false
+---
+
+## Swagger란?
+
+API들이 가지고 있는 스펙(spec)을 명세, 관리할 수 있는 프로젝트.
+
+****
+
+## 왜 사용하는가?
+
+협업을 진행하거나 이미 만들어져 있는 프로젝트에 대해 유지보수를 진행하게 되면 구축되어 있는 API서버가 어떤 스펙을 가지고 있는지 파악해야한다. 이러한 스펙 들을 직접 문서로 작성하게 되면 API가 변경될 때 마다 문서를 수정해야한다.
+
+→ 유지보수가 어려움.
+
+****
+
+이러한 어려움을 덜어주기 위해 만들어진 것이 Swagger이다.
+
+****
+
+## 프로젝트에 적용하는 방법
+
+1. pom.xml 수정
+
+```xml
+<!-- Swagger -->
+
+<dependency>
+  <groupId>io.springfox</groupId>
+  <artifactId>springfox-swagger2</artifactId>
+  <version>2.6.1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.springfox</groupId>
+  <artifactId>springfox-swagger-ui</artifactId>
+  <version>2.6.1</version>
+</dependency>
+```
+
+2. SwaggerConfig 생성
+
+```java
+@Configuration
+@EnableSwagger2
+@EnableWebMvc
+public class SwaggerConfig {
+
+  @Bean
+  public Docket api() {
+      return new Docket(DocumentationType.SWAGGER_2)
+              .select()
+              .apis(RequestHandlerSelectors.basePackage("BoardWeb.controller"))
+              .paths(PathSelectors.any())
+              .build();
+
+  }
+}
+```
+
+3.dispatcher-servlet.xml 수정
+
+```xml
+<context:component-scan base-package="BoardWeb.swagger"/>
+
+<!-- swagger -->
+<bean class="BoardWeb.swagger.SwaggerConfig"/>
+<mvc:resources location="classpath:/META-INF/resources/" mapping="swagger-ui.html"></mvc:resources>
+<mvc:resources location="classpath:/META-INF/resources/webjars/"  mapping="/webjars/**"></mvc:resources>
+```
+
+4. [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) 접속
+
+![](~/assets/images/posts/swagger-annotations-guide/image-0.png)
+
+****
+
+## Swagger 관련 어노테이션
+
+```java
+@GetMapping("/post")
+@ApiOperation(value="사용자 정보 조회", notes="사용자 정보를 조회")
+@CrossOrigin(origins = "http://localhost:3000")
+public List goodPersons(){
+return personRepository.findAll();
+}
+
+@PostMapping("/post")
+@ApiOperation(value="사용자 정보 저장", notes="사용자 정보를 저장합니다")
+@CrossOrigin(origins = "http://localhost:3000")
+public void registration(@ModelAttribute("personForm") Post postForm) {
+System.out.println(postForm);
+personService.savePost(postForm);
+}
+```
+
+1. @ApiOperation을 사용하여 해당 API에 대한 설명을 추가해줄 수 있다
+
+2. @ApiParam을 사용하여 매개 변수에 대한 세부 정보를 추가하거나 코드에서 읽을 때 값을 변경할 수 있다
+
+@ApiParam주석은 매개 변수의 이름, 유형, 설명(값)및 예제 값을 지정하는 데 도움이 된다. 또한 매개 변수가 필요한지 또는 선택적인지 여부를 지정할 수 있다.
+
+****
+
+```java
+@Controller
+@RequestMapping(value = "컨트롤러가 매핑되는 URL PATH")
+@Api(value = "컨트롤러가 매핑되는 URL PATH", description = "controller 에 대한 설명을 써준다") // swagger annotation
+public class SampleAPIController {
+  @ApiOperation(        // swagger annotation
+          value = "개별 API 에 대한 소개",
+          notes = "개별 API 에 대한 설명",
+          response = SampleResponseObject.class, responseContainer = "List"
+  )
+  @RequestMapping(value = "/{pathVariable}", method = RequestMethod.GET)
+  public ResponseEntity<Collection<SampleResponseObject>> sendGetAPI(
+          @ApiParam(value = "pathVariable 에 대한 설명", required = true)
+          @PathVariable String pathVariable,
+          @ApiParam(value = "파라미터에 대한 설명")
+          @RequestParam(value = "limits", required = false) Integer limits,
+          @ApiParam(value = "파라미터에 대한 설명")
+          @RequestParam(value = "rollbackOptions", required = false) String rollbackOptions,
+          @ApiParam(value = "Body 에 대한 설명", required = true)
+          @RequestBody SampleRequestObject sRequestObject)
+}
+```
+
+> 코드 출처: [https://mrsence.tistory.com/56](https://mrsence.tistory.com/56) [감각적신사 의 멱살잡고 IT]
+
+****
+
+## 오류, 해결방법
+
+오류 내용 : swagger-ui.html 접속시 500오류
+
+![](~/assets/images/posts/swagger-annotations-guide/image-1.png)
+
+****
+
+해결 방법 :
+
+1번과 2번중 하나만 적용해도 해결 가능
+
+1. dispatcher-servlet.xml에 아래 코드 추가
+
+![](~/assets/images/posts/swagger-annotations-guide/image-2.png)
+
+2. SwaggerConfig 에 @EnableWebMvc 어노테이션 추가
+
+![](~/assets/images/posts/swagger-annotations-guide/image-3.png)
+
+@EnableWebMvc는 어노테이션 기반의 SpringMvc를 구성할때 필요한 Bean설정들을 자동으로 해주는 어노테이션입니다. 또한 기본적으로 등록해주는 Bean들 이외에 추가적으로 개발자가 필요로하는 Bean들을 등록을 손쉽게 할 수 있도록 도와줍니다.
+
+→ \<mvc:annotation-driven/\>과 같은 역할
+
+자세한 내용 : [https://galid1.tistory.com/532](https://galid1.tistory.com/532)
+
+****
+
+참고자료
+
+[https://ttubeoki.tistory.com/20](https://ttubeoki.tistory.com/20)
+
+[https://www.baeldung.com/swagger-apiparam-vs-apimodelproperty](https://www.baeldung.com/swagger-apiparam-vs-apimodelproperty)

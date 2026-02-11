@@ -61,6 +61,7 @@ export interface MetaData {
   robots?: MetaDataRobots;
 
   description?: string;
+  keywords?: string;
 
   openGraph?: MetaDataOpenGraph;
   twitter?: MetaDataTwitter;
@@ -83,6 +84,13 @@ export interface MetaDataOpenGraph {
   images?: Array<MetaDataImage>;
   locale?: string;
   type?: string;
+  article?: {
+    publishedTime?: string;
+    modifiedTime?: string;
+    section?: string;
+    authors?: string[];
+    tags?: string[];
+  };
 }
 
 export interface MetaDataTwitter {

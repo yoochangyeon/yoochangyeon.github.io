@@ -1,0 +1,64 @@
+---
+publishDate: 2021-06-25T00:00:00Z
+author: "유창연"
+title: "@Controller 와 @RestController 차이점"
+image: "~/assets/images/posts/controller-vs-restcontroller/image-0.png"
+excerpt: "Spring의 @Controller와 @RestController의 차이점을 실행 흐름과 함께 비교하고, @ResponseBody의 역할을 설명합니다."
+category: "Backend"
+tags: ["spring","controller","restcontroller"]
+draft: false
+---
+
+SpringMVC를 공부할 때 @Controller를 사용했고 SpringBoot를 공부할 때는 @RestController를 사용했다.
+
+이 둘의 차이점은 view와 관련이 있다.
+
+SpringMVC는 view를 사용한다. 때문에 view를 반환할 수 있는 @Controller를 사용한다.
+
+**@Controller는 View를 반환하기 위해서 주로 사용된다**
+
+> **@Controller의 실행 흐름**
+> Client -> Request -> Dispatcher Servlet -> Handler Mapping ->
+> Controller -> View -> Dispatcher Servlet -> Response -> Client
+
+SpringMVC에서도 view를 반환하지 않고 json 형식의 데이터만 반환할 때가 있다.
+
+이 때 **@ResponseBody**를 사용해서 자바 객체를 HTTP 응답의 Body로 매핑해준다.
+
+Dispatcher Servlet을 거치지 않고 Controller에서 직접 응답을 반환한다.
+
+> **@ResponseBody의 실행 흐름**
+> Client -> Request -> Dispatcher Servlet -> Handler Mapping ->
+> Controller (ResponseBody)-> Response -> Client
+
+View와는 완전히 분리된 REST API를 개발할 때 @Controller 어노테이션과 @ResponserBody를 계속 사용할 필요가 없다.
+
+@RestController는 @Controller + @ResponseBody이다.
+
+> **@RestController의 실행 흐름**
+> Client -> HTTP Request -> Dispatcher Servlet -> Handler Mapping ->
+> RestController (자동 ResponseBody 추가)-> HTTP Response -> Client
+
+참고
+
+[https://yhmane.tistory.com/78](https://yhmane.tistory.com/78)
+
+[[Spring] - 스프링 @Controller @RestController 차이 이해하기
+
+@Controller와 @RestController의 차이 HTTP Response Body가 생성되는 방식의 차이 @Controller를 사용하는 경우 Client가 URI 요청을 보냄 DispatcherServlet과 Handler Mapping이 요청을 Intercept Control..
+
+yhmane.tistory.com](https://yhmane.tistory.com/78)
+[https://lkg3796.tistory.com/58](https://lkg3796.tistory.com/58)
+
+[[Spring] @RestController , @Controller의 차이
+
+@Controller와 @RestController의 차이 HTTP Response Body가 생성되는 방식의 차이. 기존의 MVC @Controller는 View 기술을 사용하지만, @RestController는 객체를 반환할때 객체 데이터는 바로 JSON/XML 타입의..
+
+lkg3796.tistory.com](https://lkg3796.tistory.com/58)
+[https://mangkyu.tistory.com/49](https://mangkyu.tistory.com/49)
+
+[[Spring] @Controller와 @RestController 차이
+
+Spring에서 컨트롤러를 지정해주기 위한 어노테이션은 @Controller와 @RestController가 있습니다. 전통적인 Spring MVC의 컨트롤러인 @Controller와 Restuful 웹서비스의 컨트롤러인 @RestController의 주요한 차..
+
+mangkyu.tistory.com](https://mangkyu.tistory.com/49)

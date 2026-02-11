@@ -12,7 +12,6 @@ import SiteVerification from '~/components/common/SiteVerification.astro';
 import Analytics from '~/components/common/Analytics.astro';
 import BasicScripts from '~/components/common/BasicScripts.astro';
 import WebsiteSchema from '~/components/seo/WebsiteSchema.astro';
-import CanonicalURL from '~/components/seo/CanonicalURL.astro';
 
 // Comment the line below to disable View Transitions
 import { ClientRouter } from 'astro:transitions';
@@ -35,10 +34,11 @@ const { language, textDirection } = I18N;
     <CustomStyles />
     <ApplyColorMode />
     <Metadata {...metadata} />
-    <CanonicalURL />
     <SiteVerification />
     <Analytics />
     <WebsiteSchema />
+    <link rel="alternate" hreflang="ko" href={Astro.url.href} />
+    <link rel="alternate" hreflang="x-default" href={Astro.url.href} />
     <slot name="head" />
 
     <!-- Comment the line below to disable View Transitions -->

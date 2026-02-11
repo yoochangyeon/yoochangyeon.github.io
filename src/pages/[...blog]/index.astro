@@ -36,6 +36,8 @@ const breadcrumbItems = [
   { name: post.title, url: url },
 ];
 
+const tagStrings = post.tags?.map((tag: any) => (typeof tag === 'string' ? tag : tag.title || tag.slug)) || [];
+
 const metadata = merge(
   {
     title: post.title,
@@ -46,12 +48,21 @@ const metadata = merge(
     },
     openGraph: {
       type: 'article',
+      article: {
+        publishedTime: post.publishDate?.toISOString(),
+        ...(post.updateDate && { modifiedTime: post.updateDate.toISOString() }),
+        ...(post.category && { section: post.category.title || post.category }),
+        ...(tagStrings.length > 0 && { tags: tagStrings }),
+      },
       ...(image
         ? { images: [{ url: image, width: (image as ImageMetadata)?.width, height: (image as ImageMetadata)?.height }] }
         : {}),
     },
   },
-  { ...(post?.metadata ? { ...post.metadata, canonical: post.metadata?.canonical || url } : {}) }
+  {
+    ...(tagStrings.length > 0 && { keywords: tagStrings.join(', ') }),
+    ...(post?.metadata ? { ...post.metadata, canonical: post.metadata?.canonical || url } : {}),
+  }
 ) as MetaData;
 ---
 
@@ -65,7 +76,7 @@ const metadata = merge(
       image={typeof image === 'string' ? image : undefined}
       author={post.author}
       category={post.category?.title || post.category}
-      tags={post.tags?.map((tag: any) => (typeof tag === 'string' ? tag : tag.title || tag.slug)) || []}
+      tags={tagStrings}
       url={url}
     />
     <BreadcrumbSchema items={breadcrumbItems} />

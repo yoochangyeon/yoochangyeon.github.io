@@ -1,0 +1,337 @@
+---
+publishDate: 2024-07-14T00:00:00Z
+author: "유창연"
+title: "datadog연동하다가 오픈 소스에 PR까지 올리게 된 과정 (feat. prisma, opentelemetry)"
+image: "~/assets/images/posts/datadog-prisma-opentelemetry-pr/image-0.png"
+excerpt: "Prisma 쿼리를 Datadog에서 모니터링하기 위해 OpenTelemetry 연동 중 발생한 문제를 해결하고, dd-trace 오픈소스에 PR을 올린 경험을 공유합니다."
+category: "Backend"
+tags: ["datadog","ddtrace","NestJS","opentelemetry","prisma"]
+draft: false
+---
+
+## prisma 쿼리 로그를 확인하고 싶다
+
+### datadog에서 prisma로그를 수집하는 방법을 선택하지 않은 이유
+
+prisma가 만드는 쿼리를 datadog을 통해서 모니터링 하고 싶었다.
+
+물론 간단하게 로거를 만들고, prisma에서 발생하는 event를 로깅해도 괜찮았다. prisma 공식문서에서 실제로 그렇게 가이드를 해주고 있다.
+
+```typescript
+const prisma = new PrismaClient({
+  log: [
+    {
+      emit: 'event',
+      level: 'query',
+    },
+    {
+      emit: 'stdout',
+      level: 'error',
+    },
+    {
+      emit: 'stdout',
+      level: 'info',
+    },
+    {
+      emit: 'stdout',
+      level: 'warn',
+    },
+  ],
+})
+
+prisma.$on('query', (e) => {
+  console.log('Query: ' + e.query)
+  console.log('Params: ' + e.params)
+  console.log('Duration: ' + e.duration + 'ms')
+})
+```
+
+이렇게 코드를 작성하면 datadog 로그 수집으로 쿼리를 확인할 수 있다.
+
+다만 이렇게 되면 자세한 span trace가 찍히지 않는다.
+
+- 해당 prisma쿼리가 얼마나 오랜 시간동안 동작했는지
+- 하나의 HTTP request에서 어떤 prisma 쿼리가 어떤 타이밍에 발생했는지
+
+이 두가지를 모두 확인하기에는 단순히 event-based 로깅을 하기에는 부족한 점이 있었다.
+
+### prisma가 Opentelemetry를 지원한다
+
+[prisma 공식 문서 (OpenTelemetry tracing)](http://https://www.prisma.io/docs/orm/prisma-client/observability-and-logging/opentelemetry-tracing) 를 확인해보면 opentelemetry를 사용해서 prisma의 세부 동작들을 모두 모니터링 할 수 있다고 한다.
+
+그러나 이 방법은 opentelemetry를 사용하는 방식이기 때문에 opentelemetry collector를 서버에 생성해두고 collector를 통해 수집되는 방식이었다. 그래서 이 방법을 그대로 사용하기에는 무리가 있었다.
+
+## datadog에서 제공하는 opentelemetry tracer를 사용해보자
+
+방법을 찾던 중에, ddtrace github에 등록되어있는 issue에서 좋은 방법을 찾게 됐다.
+
+[Request: Add support for Prisma query tracing #1244](https://github.com/DataDog/dd-trace-js/issues/1244)
+
+kdawgwilk라는 분의 코멘트였는데, 코드는 이렇게 생겼다.
+
+```typescript
+import tracer from 'dd-trace'
+import { registerInstrumentations } from '@opentelemetry/instrumentation'
+import { PrismaInstrumentation } from '@prisma/instrumentation'
+
+const { TracerProvider } = tracer.init()
+
+const provider = new TracerProvider()
+
+// Register your auto-instrumentors
+registerInstrumentations({
+  tracerProvider: provider,
+  instrumentations: [new PrismaInstrumentation()],
+})
+
+// Register the provider globally
+provider.register()
+```
+
+dd-trace의 tracer에서 TracerProvider라는 이름으로 opentelemetry와 연동할 수 있도록 제공해주고 있었다.
+
+재빨리 적용했고, 에러를 만났다.
+
+```bash
+TypeError: parentTracer.getSpanLimits is not a function
+    at new Span (/Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@opentelemetry/sdk-trace-base/src/Span.ts:122:37)
+    at /Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@prisma/instrumentation/dist/chunk-VVAFFO6L.js:59:20
+    at Array.forEach (<anonymous>)
+    at ActiveTracingHelper.createEngineSpan (/Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@prisma/instrumentation/dist/chunk-VVAFFO6L.js:44:27)
+    at eo.createEngineSpan (/Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@prisma/client/runtime/library.js:122:1645)
+    at wt.logger (/Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@prisma/client/runtime/library.js:112:1167)
+    at /Users/yoo-changyeon/repo/timespread-api-nest/node_modules/@prisma/client/runtime/library.js:112:922
+```
+
+sdk-trace-base에서 Span 생성할 때 parentTracer.getSpanLimits is not a function 이라는 에러가 발생했다.
+
+## 문제 범인 찾기
+
+@prisma/instrumentation 에서 내부적으로 @opentelemetry/sdk-trace-base의 Span생성자를 통해 span을 생성하는 것을 확인했다.
+
+```typescript
+const span = new import_sdk_trace_base.Span(
+    tracer,
+    import_api.ROOT_CONTEXT,
+    engineSpan.name,
+    spanContext,
+    import_api.SpanKind.INTERNAL,
+    engineSpan.parent_span_id,
+    links,
+    engineSpan.start_time
+);
+```
+
+이 생성자는 어떻게 생겼는지, [@opentelemetry/sdk-trace-base의 코드](https://github.com/open-telemetry/opentelemetry-js/blob/01a2c35a694e57df45f063d61506ef9e9938eb7d/packages/opentelemetry-sdk-trace-base/src/Span.ts#L126)를 확인해보자.
+
+```typescript
+constructor(
+    parentTracer: Tracer,
+    context: Context,
+    spanName: string,
+    spanContext: SpanContext,
+    kind: SpanKind,
+    parentSpanId?: string,
+    links: Link[] = [],
+    startTime?: TimeInput,
+    _deprecatedClock?: unknown, // keeping this argument even though it is unused to ensure backwards compatibility
+    attributes?: SpanAttributes
+  ) {
+    this.name = spanName;
+    this._spanContext = spanContext;
+    this.parentSpanId = parentSpanId;
+    this.kind = kind;
+    this.links = links;
+    .
+    .
+    (중략)
+    .
+    .
+    this._spanLimits = parentTracer.getSpanLimits();
+    this._attributeValueLengthLimit =
+      this._spanLimits.attributeValueLengthLimit || 0;
+
+    if (attributes != null) {
+      this.setAttributes(attributes);
+    }
+    .
+    .
+  }
+```
+
+중간에 명확히 보이는 `this._spanLimits = parentTracer.getSpanLimits();` 이 코드가 에러를 발생시키는 원인이다.
+
+parentTracer는 전달받은 tracer를 의미하고 있었다.
+
+그러면 이 생성자에서 원하는 Tracer의 인터페이스는 어떻게 생겼을까?
+
+[@opentelemetry/sdk-trace-base](https://github.com/open-telemetry/opentelemetry-js/blob/01a2c35a694e57df45f063d61506ef9e9938eb7d/packages/opentelemetry-sdk-trace-base/src/Tracer.ts)의 Tracer인터페이스를 확인해보면
+
+여기에는 getSpanLimits()가있다.
+
+그러면 내가 생성자에 전달한 provider에는 getSpanLimits()가 없는것인지 확인하기 위해 코드를 찾아보자
+
+```typescript
+import tracer from 'dd-trace'
+import { registerInstrumentations } from '@opentelemetry/instrumentation'
+import { PrismaInstrumentation } from '@prisma/instrumentation'
+
+const { TracerProvider } = tracer.init()
+
+const provider = new TracerProvider()
+
+// Register your auto-instrumentors
+registerInstrumentations({
+  tracerProvider: provider,
+  instrumentations: [new PrismaInstrumentation()],
+})
+
+// Register the provider globally
+provider.register()
+```
+
+내가 작성했던 코드를 확인해보면, provider로 전달해준 TracerProvider()가 곧 parentTracer다
+
+이 TracerProvider()는 dd-trace에서 제공하는 것이므로 dd-trace코드를 다시 봐야한다.
+
+```javascript
+export interface TracerProvider extends otel.TracerProvider {
+  /**
+   * Construct a new TracerProvider to register with @opentelemetry/api
+   *
+   * @returns TracerProvider A TracerProvider instance
+   */
+  new(): TracerProvider;
+  }
+```
+
+dd-trace에서 제공하는 TracerProvider()를 살펴보면 우선 getSpanLimits()가 구현되어있지 않다.
+
+그렇다면 otel.TracerProvider에서는 제공하고 있어야 한다. (에러가 발생하지 않으려면)
+
+otel.TracerProvcider는 @opentelemetry/api의 인터페이스이므로 [@opentelemetry/api의 Tracer](https://github.com/open-telemetry/opentelemetry-js/blob/a6020fb113a60ae6abc1aa925fa6744880e7fa15/api/src/trace/tracer.ts)를 확인해보자
+
+```javascript
+export interface Tracer {
+  startSpan(name: string, options?: SpanOptions, context?: Context): Span;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    fn: F
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    fn: F
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    context: Context,
+    fn: F
+  ): ReturnType<F>;
+}
+```
+
+getSpanLimits()는 구현되어있지 않다. **찾았다 범인**
+
+### 원인과 해결 방법
+
+dd-trace에서 TracerProvider()를 만들 때, [@opentelemetry/api의 Tracer인터페이스](https://github.com/open-telemetry/opentelemetry-js/blob/01a2c35a694e57df45f063d61506ef9e9938eb7d/api/src/trace/tracer.ts)를 따라 구현한 것으로 보인다.
+
+내가 만들었어도 그렇게 했을 것이다. (누가 봐도 저게 공식 tracer 인터페이스니까..)
+
+그런데 문제는, prisma에서는 @opentelemetry/sdk-trace-base가 정의해둔 Tracer인터페이스를 사용했고, 거기에는 getSpanLimits()가 정의되어있다.
+
+문제를 정리하자면
+
+1. registerInstrujmentation()이 PrismaInstrumentation()에 ddTracer.TracerProvider()를 전달한다.
+
+2. 이 때 new PrismaInstrumentation()에서는@opentelemetry/sdk-trace-base의 Span생성자를 호출한다.
+
+3. 이 때 Span생성자가 제공받은 ddTracer.TracerProvider()의 getSpanLimit()를 호출하는데, 존재하지 않는다.
+
+원인은
+
+1. opentelmetry가, api, sdk-trace-base두 패키지에서 Tracer정의를 따로 했다. 그리고 sdk-trace-base쪽에만 추가로 있는 함수가 몇개 있었다. (이 문제의 원인인 getSpanLimits()와, 추가로 확인했던 getGeneralLimits())
+
+2. prisma는 sdk-trace-base의 Tracer를 기반으로 동작하도록 작성되어있다.
+
+3. dd-trace는 api의 Tracer를 기반으로 동작하도록 작성되어있다.
+
+prisma가 @opentelemetry/api가 아닌 @opentelemetry/sdk-trace-base를 통해 구현됐기 때문에 dd-trace입장에서는 대응이 불가능했다.
+
+코드를 간단하게 수정했다.
+
+```typescript
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import type { SpanLimits } from '@opentelemetry/sdk-trace-base';
+import { PrismaInstrumentation } from '@prisma/instrumentation';
+import tracer from 'dd-trace';
+
+import Tracer from 'dd-trace/packages/dd-trace/src/opentelemetry/tracer';
+
+const _spanLimits: SpanLimits = {};
+Tracer.prototype.getSpanLimits = function getSpanLimits(): SpanLimits {
+  return _spanLimits;
+};
+
+export const ddTracer = tracer.init();
+const provider = new ddTracer.TracerProvider();
+
+registerInstrumentations({
+  tracerProvider: provider,
+  instrumentations: [new PrismaInstrumentation()],
+});
+
+provider.register();
+```
+
+이렇게 직접 prototype을 사용해서 getSpanLimits() 함수를 만들어줬고, 오류가 없이 동작하는 것을 확인했다.
+
+## 오픈소스에 PR을 올려보자
+
+이 문제를 dd-trace에게 알리기 위해 해당 이슈에 코멘트를 달고 직접 코드를 수정해서 PR을 올렸다.
+
+이슈에 내가 해결한 방법을 등록해두었다.
+
+dd-trace github에 이 문제를 수정할 수 있도록 PR을 등록했다.
+
+그랬더니 어김없이 달리는 리뷰
+
+> getSpanLimits()는 ddtrace안에서 사용되지 않는데, 이 코드가 왜 여기 있어야 하는가?
+
+열심히 PR에 열심히 설명해두었는데, 설명이 부족했던 것일까?
+
+다시 또 열심히 설명했다. (파파고 고마워요... 영어는 어렵다)
+
+주석을 달아서 설명을 하자고 한다.
+
+맞지맞지 주석을 달아놓지 않으면, 나중에 누군가는 이 코드를 삭제해버릴 수도 있다. (어디에서도 사용되지 않으니까)
+
+해당 suggestion을 승락했다.
+
+그랬더니 머지않아 새로운 PR이 올라온다.
+
+뭔가 PR이 merge될 때 자신들만의 순서(?)가 있는 듯했다. 여러가지 CI를 위해서 재생성했다고 한다.
+
+내가 올린 PR이 여러 테스트를 통과하는 순간
+
+그리고 대망의 merge가 되는 현장을 목격했다.
+
+내 코드가 master브랜치에 merge되는 순간
+
+### 오픈 소스에 첫 PR을 올려보며 느낀 점
+
+오픈 소스에 PR을 올리는 것은 처음이었다. 이 문제의 원인을 찾고, prototype으로 테스트 해보는 것 등등, 대부분의 문제는 회사 CTO님께 도움을 받았다. 해당 이슈에 코멘트를 남겨서 반응을 확인해보고, PR도 올려보는 것은 어떻겠느냐? 제안 주신 것도 CTO님이셨다.
+
+원래라면,
+
+> 데이터독에서 지원을 안해주네? 이건 못하겠다.
+
+이렇게 생각하고 넘어갔어야 하는 문제였는데,
+
+> 그러면 내가 직접 수정 PR을 올려봐야지
+
+라는 판단 가능하다는 걸 알게되는 순간이었다.
+
+'내가 직접 해결할 수 있구나'를 깨달았고 앞으로 개발 경험에 엄청 큰 영향을 줄 것 같다.

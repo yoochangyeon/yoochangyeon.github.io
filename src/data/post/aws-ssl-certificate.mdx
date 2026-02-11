@@ -1,0 +1,50 @@
+---
+publishDate: 2021-08-10T00:00:00Z
+author: "유창연"
+title: "AWS SSL 아마존 인증서 발급"
+image: "~/assets/images/posts/aws-ssl-certificate/image-0.png"
+excerpt: "AWS Certificate Manager에서 SSL 인증서를 발급받는 방법을 단계별로 안내합니다. DNS 검증과 Route 53 레코드 생성을 다룹니다."
+category: "DevOps"
+tags: ["aws","ssl","certificate"]
+draft: false
+---
+
+기존 무료 인증서 LetsEncrypt를 사용하다가 ELB + 아마존 인증서를 사용해보기 위해아마존에서 인증서를 발급받기로 했다.
+
+**1. AWS 콘솔 - Certification Manager - 인증서 요청**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-0.png)
+
+**2. 인증서 프로비저닝 선택**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-1.png)
+
+****
+
+**3. 공인 인증서 요청**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-2.png)
+
+****
+
+**4. 도메인 이름 추가**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-3.png)
+
+**5. DNS 검증 선택**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-4.png)
+
+**6. 검토 확인 및 요청**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-5.png)
+
+**7. 검증 미완료 상태에서 Route 53에서 레코드 생성 버튼 클릭**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-6.png)
+
+**8. 약 1분~2분 뒤 검증 미완료에서 발급 완료로 변경되는 것 확인**
+
+![](~/assets/images/posts/aws-ssl-certificate/image-7.png)
+
+****
