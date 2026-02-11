@@ -126,41 +126,31 @@ const filteredHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     border-left-color: rgb(147, 197, 253);
   }
 
-  /* Custom scrollbar - 컨테이너 오른쪽에 붙은 스타일 */
+  /* Custom scrollbar */
   .toc-container {
     scrollbar-width: thin;
-    scrollbar-color: rgb(209, 213, 219) transparent;
+    scrollbar-color: rgba(180, 180, 180, 0.3) transparent;
   }
 
   :global(.dark) .toc-container {
-    scrollbar-color: rgb(75, 85, 99) transparent;
+    scrollbar-color: rgba(100, 100, 100, 0.3) transparent;
   }
 
-  /* Webkit browsers (Chrome, Safari, Edge) */
   .toc-container::-webkit-scrollbar {
     width: 2px;
   }
 
   .toc-container::-webkit-scrollbar-track {
     background: transparent;
-    margin: 0.25rem 0;
   }
 
   .toc-container::-webkit-scrollbar-thumb {
-    background: rgb(209, 213, 219);
-    border-radius: 2px;
-  }
-
-  .toc-container::-webkit-scrollbar-thumb:hover {
-    background: rgb(156, 163, 175);
+    background: rgba(180, 180, 180, 0.4);
+    border-radius: 9999px;
   }
 
   :global(.dark) .toc-container::-webkit-scrollbar-thumb {
-    background: rgb(75, 85, 99);
-  }
-
-  :global(.dark) .toc-container::-webkit-scrollbar-thumb:hover {
-    background: rgb(107, 114, 128);
+    background: rgba(100, 100, 100, 0.4);
   }
 </style>
 
