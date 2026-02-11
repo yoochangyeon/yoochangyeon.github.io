@@ -16,7 +16,7 @@ site:
   # 2. 사이트 등록 > HTML 태그 방식 선택
   # 3. content="여기_나오는_코드" 부분만 아래에 입력
   # 예: content="xyz789ghi012" → naverSiteVerificationId: "xyz789ghi012"
-  naverSiteVerificationId: false
+  naverSiteVerificationId: "5d53d5272dec04549983cf552ed69566a146f0de"
 
   # Giscus 댓글 시스템 설정
   # 1. https://giscus.app/ko 접속
