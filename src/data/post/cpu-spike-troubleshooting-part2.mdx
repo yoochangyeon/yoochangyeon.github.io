@@ -1,0 +1,150 @@
+---
+publishDate: 2025-05-13T00:00:00Z
+author: "유창연"
+title: "원인 불명 CPU사용량 급증에 대처했던 방법 (2)"
+image: "~/assets/images/posts/cpu-spike-troubleshooting-part2/image-0.png"
+excerpt: "CPU 급증 문제의 두 번째 패턴인 SIGSEGV 시그널 반복 현상을 분석하고, Datadog의 async-safe하지 않은 시그널 핸들러 코드를 발견하여 PR을 올리게 된 과정을 기록합니다."
+category: "DevOps"
+tags: ["cpu","debugging","datadog","sigsegv","open-source"]
+draft: false
+---
+
+# 원인 불명 CPU사용량 급증에 대처했던 방법 (2)
+
+Datadog팀에 PR을 올리게 된 이유
+
+## 새로운 패턴이 발견됐다.
+
+지난 *첫번째 글*과 이어집니다.
+
+비정상 인스턴스에서 보여지는 패턴이 하나 더 발견됐습니다.
+한가지 패턴은 이미 지난번 글로 설명했던, SIGPROF 시그널을 반복적으로 받는 패턴입니다. 그리고 이번 글로 다루게 되는 패턴은 SIGSEGV패턴을 반복해서 받는 패턴입니다.
+
+시스템 콜은 아래 5가지 콜이 무한으로 반복되는 모습을 보입니다.
+
+```
+[pid  2881] --- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0xe3a8} ---
+[pid  2881] read(7, "*", 1)             = 1
+[pid  2881] write(22, "(\207\342\303\252\252\0\0\v\0\0\0\0\0\0\0", 16) = -1 EAGAIN (Resource temporarily unavailable)
+[pid  2881] write(8, "*", 1)            = 1
+[pid  2881] rt_sigreturn({mask=[]})     = 0
+```
+
+각 호출을 풀어보면 이렇게 됩니다.
+
+- SIGSEGV 시그널을 받았습니다.
+- 7번 파일디스크립터에서 값을 읽었고, 이는 성공했습니다.
+- 22번 파일디스크립터에 무엇인가 작성하려고 했는데, Resource temporarily unavailable 에러 메세지와 함께 실패했습니다.
+- 8번 파일디스크립터에 값을 작성했고, 성공했습니다.
+- 시그널 처리를 완료했다는 메세지를 반환합니다.
+
+22번 파일 디스크립터를 누가 사용하고 있는가 확인해보았습니다.
+
+```
+[root@ip-172-31-11-106 log]# ls -l /proc/2881/fd/22
+l-wx------. 1 webapp webapp 64 Jan 13 23:43 /proc/2881/fd/22 -> 'pipe:[22372]'
+```
+
+22372 파이프가 이것을 사용하고 있었습니다. 그래서 22372 파이프를 사용하고 있는 모든 프로세스를 확인해보았습니다.
+
+```
+lsof | grep 22372
+```
+
+```
+node-20     2881   2890 iou-sqp-2          webapp   21r     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2890 iou-sqp-2          webapp   22w     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2891 node-20            webapp   21r     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2891 node-20            webapp   22w     FIFO               0,12       0t0      22372 pipe
+...
+node-20     2881   2929 opentelem          webapp   21r     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2929 opentelem          webapp   22w     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2971 v8:ProfEv          webapp   21r     FIFO               0,12       0t0      22372 pipe
+node-20     2881   2971 v8:ProfEv          webapp   22w     FIFO               0,12       0t0      22372 pipe
+```
+
+22번 파일디스크립터에 읽기, 쓰기를 하고 있는 프로세스를 추리면 이렇게 됩니다.
+
+1. node-20
+2. iou-wrk-2
+3. tokio-run
+4. futures-t
+5. opentelem
+6. v8:ProfEv
+7. iou-sqp-2
+
+이중에 opentelem는 opentelemetry의 약자로 보이고, v8:ProfEv는 위의 CASE 1에서도 등장했던, v8엔진 프로파일러로 보여집니다. 문제를 발생시키고 있는 가장 유력한 후보를 보면, 위에서도 등장했던 v8:ProfEv이고, 이를 사용하는 Datadog으로 보여집니다. 정확히는 Datadog에서 프로파일링을 담당하고 있는 코드에 문제가 있다고 추측했습니다.
+
+## 데이터독은 SIGSEGV 시그널을 어떻게 핸들링하는가?
+
+데이터독에서 SIGSEGV시그널을 받게 되면, 어떻게 핸들링하고 있을까요? 데이터독의 코드를 확인해보기로 했습니다.
+
+```cpp
+void sigsegv_handler(int sig, siginfo_t *si, void *uc) {
+  // TODO this really shouldn't call printf-family functions...
+  (void)uc;
+#ifdef __GLIBC__
+  constexpr size_t k_stacktrace_buffer_size = 4096;
+  static void *buf[k_stacktrace_buffer_size] = {};
+  size_t const sz = backtrace(buf, std::size(buf));
+#endif
+  (void)fprintf(
+      stderr, "ddprof[%d]: <%.*s> has encountered an error and will exit\n",
+      getpid(), static_cast<int>(str_version().size()), str_version().data());
+  if (sig == SIGSEGV) {
+    printf("[DDPROF] Fault address: %p\n", si->si_addr);
+  }
+#ifdef __GLIBC__
+  backtrace_symbols_fd(buf, sz, STDERR_FILENO);
+#endif
+  exit(-1);
+}
+```
+
+이 코드를 모두 이해하지 못했기 때문에, 상황을 놓고 가설을 세워봤습니다. 가장 의심했던 것은 이것입니다
+
+> 이 핸들러 또한, SIGSEGV 시그널을 발생시킬 수 있는 코드가 있지는 않을까?
+
+이에 대해서 찾아보던 중에 시그널 핸들러에서는 반드시 async-safe한 함수를 사용해야한다.는 내용을 찾게 되었습니다.
+
+> backtrace_symbols_fd() is not in that list. You can't use it in a signal handler.
+
+> 스레드 안전성(thread safety)과 유사한 개념으로 비동기 시그널 안전성(Async-Signal safety)이 있다. 비동기 시그널 안전성이 보장되는 연산은, 해당 연산이 진행되는 도중에 시그널로 인해 인터럽트가 발생해도 서로 간섭하지 않는다.
+
+> 비동기 시그널 안전성 문제가 발생하는 이유는, 시그널 핸들러에서 수행하는 동작이 원래 진행 중이던 함수의 동작과 충돌할 수 있기 때문이다.
+
+위 두 내용으로 보아서 `backtrace_symbols_fd()`, `fprintf()`, `exit()` 세 함수 모두 async-safe하지 않게 작성되었고, `printf()` 계열 대신 `write()`함수를, `exit()`함수 대신 `_exit()` 함수를 사용해서 async-safe 하게 작성해야하는 것으로 보였습니다.
+
+이 내용을 확인하니 그제서야 보이는 datadog 함수의 주석...
+
+> **// TODO this really shouldn't call printf-family functions...**
+
+아마도, 이 시그널 핸들러를 작성한 사람도 async-safe 함수를 사용해야한다는 것을 알았지만, 다음으로 미뤄두었던 것 같습니다.
+
+asnyc-safe하지 않은 함수들이 원인인지 명확하지 않지만, datadog팀에게 일 하라는 의미로 PR을 올렸습니다.
+
+[PR #433: replace fprintf(), exit() with write(), _exit() to async-safe at SIGSEGV signal handler](https://github.com/DataDog/ddprof/pull/433)
+
+## 더 깊이 파보지 않기로 결정.. 이제부터는 추측입니다.
+
+> 더 깊게 파보기에는, 시간을 쏟는 공수 대비 효과가 적다고 판단했습니다.
+> 이전 글에서 작성한 대로, Datadog Profiling 기능을 종료하니 재발하지 않았기 때문에, 문제 해결 방법은 이미 나와있는 상태였습니다. 때문에, 추가 공수를 사용하기에는 다른 문제에 집중하는 것이 더 좋다고 판단했습니다.
+
+이 문제를 재현시키는, 정확한 시나리오를 확인하지 못했습니다. 다만 부족한 지식으로 유추하자면, 이 시그널 핸들러에서, 다시 SIGSEGV시그널이 발생할 수 있다고 생각했습니다.
+
+1. 노드 프로세스에서 SIGSEGV 시그널 발생
+2. 원래라면 SIGSEGV 발생시 프로세스가 종료되어야 하지만, 데이터독 프로파일러가 시그널을 가로챔
+3. SIGSEGV 핸들러가 호출됨
+4. 핸들러에서 버퍼를 다루거나, backtrace, backtrace_symbols_fd 함수를 실행하는 도중에 SIGSEGV시그널이 다시 발생 됨
+5. `exit(-1);` 호출되지 못하고, 다시 SIGSEGV 시그널 처리를 진행 (3번으로 돌아감)
+
+이렇게 되면, SIGSEGV시그널이 또 SIGSEGV시그널을 만들어버리는 무한 반복 시나리오가 되게 됩니다.
+
+## 글을 마치며
+
+이번 문제를 살펴보면서, '오기'를 경험해봤다. 어떤 문제를 해결해야만 하는 상황에서는 오기 보다는 책임감과 끈기로 해결할 때가 많았다. 그런데 이번 문제 상황은 이미 해결 방법이 있는 상황이었다. 그럼에도 원인을 명확하게 찾아내지 못했다는 죄책감(?)이 있었고, 너죽고 나죽자의 심정으로 정말 많은 공수를 사용했다. 그리고 결국 원인을 명확하게 찾아내지 못했다.
+나는 이런 성격의 개발자구나, 나는 이런 불명확한 것을 정말 참지 못하는 구나 하며 스스로의 성격을 알게 되는 재미있는 시간이었다.
+
+결국은 모든 시간이 수 없는 삽질의 시간이었지만 또 그 과정에서 소소하게 남는 성취감과 문제를 해결했다는 작은 성과가 남았다.
+
+*아마 이것이 개발의 묘미가 아닐까?* 라는 생각을 하며 글을 마친다.

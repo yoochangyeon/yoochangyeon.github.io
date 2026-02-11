@@ -1,0 +1,160 @@
+---
+publishDate: 2025-05-13T00:00:00Z
+author: "유창연"
+title: "우리는 undefined, null을 얼마나 알고 쓰고 있을까?"
+image: "~/assets/images/posts/javascript-undefined-null-guide/image-0.png"
+excerpt: "JavaScript의 undefined와 null의 정확한 차이점, 비교 연산의 함정, 그리고 ??, ||, 옵셔널 체이닝 연산자의 올바른 사용법을 정리합니다."
+category: "Frontend"
+tags: ["javascript","undefined","null","operators"]
+draft: false
+---
+
+# 우리는 undefined, null을 얼마나 알고 쓰고 있을까?
+
+느낌으로만 알고 쓰다가 큰코다친다
+
+최근 프로젝트에서 JavaScript의 undefined와 null을 어떻게 사용해야 하는지에 대한 고민을 하게 되었다. 두 값은 자주 접하지만, 그 정확한 역할과 사용 방법에 대해 깊이 있게 생각해 본 적이 많지 않았다. 이번 기회에 undefined와 null의 차이점, 그리고 관련된 연산자들에 대해 정리해보고자 한다.
+
+## undefined와 null의 역할
+
+- **undefined**: 변수가 선언되었지만 값이 할당되지 않은 상태를 나타낸다. 함수에서 반환 값이 없을 때도 undefined를 반환한다.
+- **null**: 개발자가 "값이 없다"는 것을 명시적으로 표현하기 위해 사용한다.
+
+예를 들어, 객체에서 존재하지 않는 속성에 접근하면 undefined가 반환된다. 반면, 어떤 변수에 null을 할당하면 그 변수는 "의도적으로 비어 있음"을 의미한다.
+
+```javascript
+let a;
+console.log(a); // undefined
+
+let b = null;
+console.log(b); // null
+```
+
+## 언제 undefined와 null을 사용해야 할까?
+
+언제 어떻게 사용해야 한다! 는 규칙은 없지만, 굳이 나눠보자면
+
+- **undefined는 암묵적인 경우에 사용**: 변수가 선언되었지만 초기화되지 않았을 때, 함수에서 반환 값이 없을 때 등은 자바스크립트 엔진이 자동으로 undefined를 할당한다.
+- **null은 명시적으로 할당**: 변수가 현재는 비어 있지만 나중에 값을 할당할 예정인 경우, 또는 객체가 없음을 명시적으로 나타내고 싶을 때 사용한다.
+
+## 주의해야 할 점
+
+### 비교 연산의 함정
+
+undefined와 null은 느슨한 비교(==)에서는 같다고 판단되지만, 엄격한 비교(===)에서는 다르다.
+
+```javascript
+console.log(undefined == null);  // true
+console.log(undefined === null); // false
+```
+
+따라서 비교할 때는 가능하면 엄격한 비교를 사용하는 것이 예상치 못한 오류를 방지할 수 있다.
+
+### typeof 연산자의 특이점
+
+```javascript
+console.log(typeof undefined); // "undefined"
+console.log(typeof null);      // "object" (자바스크립트의 오래된 버그)
+```
+
+null의 타입이 "object"로 표시되는 것은 자바스크립트의 역사적인 이유로 인한 버그이다. 따라서 타입 검사를 할 때는 주의가 필요하다.
+
+### undefined와 null의 메모리 표현
+
+두 값은 자바스크립트 엔진 내부에서 다르게 처리된다.
+
+- **undefined**: V8 엔진에서 싱글턴 값으로 관리되며, 변수에 undefined가 할당되면 이 싱글턴을 참조한다. 변수 바인딩 자체는 메모리를 사용하지만, undefined 값 자체는 엔진 전체에서 하나만 존재한다.
+- **null**: undefined와 마찬가지로 싱글턴 값이며, 명시적으로 "값이 없음"을 나타내기 위해 할당된다.
+
+실제로 두 값 사이에 메모리 사용량 차이는 거의 없으며, 성능에 영향을 미치지 않는다. 중요한 차이는 **의미론적**인 것으로, undefined는 "아직 값이 정해지지 않음"을, null은 "의도적으로 비어 있음"을 나타낸다.
+
+### 함수 매개변수의 기본값 처리
+
+함수에서 매개변수의 기본값을 설정할 때 undefined와 null은 다르게 동작한다.
+
+```javascript
+function greet(name = 'Guest') {
+  console.log(`Hello, ${name}!`);
+}
+
+greet();            // Hello, Guest!
+greet(undefined);   // Hello, Guest!
+greet(null);        // Hello, null!
+```
+
+- 매개변수에 undefined를 전달하면 기본값이 적용된다.
+- null을 전달하면 기본값이 적용되지 않고 null이 그대로 사용된다.
+
+## ??, || 연산자와 옵셔널 체이닝
+
+null과 undefined를 다루다보면 꼭 만나게되는 javascript만의 몇가지 연산자들이 있다. java개발을 하다가 처음 javascript에 입문했을 때 가장 적응하기 어려웠던(코드가 한눈에 읽히지 않아서 어려웠다) 것들이다.
+
+### 연산자 ??
+
+?? 연산자는 좌항의 값이 null 또는 undefined일 때 우항의 값을 반환한다.
+
+```javascript
+let value = null;
+console.log(value ?? '기본값'); // "기본값"
+```
+
+### 논리 OR 연산자 ||
+
+|| 연산자는 좌항의 값이 falsy(0, "", false, null, undefined, NaN)일 경우 우항의 값을 반환한다.
+
+```javascript
+let value = 0;
+console.log(value || '기본값'); // "기본값"
+```
+
+|| 연산자는 0이나 빈 문자열도 false로 취급하므로, 값이 존재하지만 0인 경우에도 우항의 값이 반환되는 문제가 있다. 이럴 때는 ?? 연산자를 사용하는 것이 더 적절하다.
+
+## 옵셔널 체이닝 ?.
+
+객체의 속성에 접근할 때 해당 객체가 null 또는 undefined인지 확인하고 접근할 수 있다.
+
+```javascript
+let user = null;
+console.log(user?.name); // undefined
+```
+
+user가 null이기 때문에 에러 없이 undefined를 반환한다.
+
+## null과 undefined의 직렬화
+
+JSON.stringify를 사용하여 객체를 직렬화할 때 undefined와 null은 다르게 처리된다.
+
+```javascript
+let obj = {
+  a: undefined,
+  b: null,
+  c: 1,
+};
+
+console.log(JSON.stringify(obj)); // '{"b":null,"c":1}'
+```
+
+- undefined 값은 직렬화 과정에서 무시된다.
+- null 값은 null로 직렬화된다.
+
+## null을 반환할까? 아예 값을 반환하지 말까?
+
+서버가 값을 반환할 때 undefined 값은 전송되지 않으므로, 클라이언트와 서버 간의 데이터 일관성을 유지하려면 null을 사용하는 것이 좋다고 생각한다.
+
+## undefined와 null을 활용한 에러 처리 전략
+
+함수에서 예외를 던지는 대신 null이나 undefined를 반환하여 에러를 처리하는 패턴이 있다.
+
+```javascript
+function findUser(id) {
+  if (id <= 0) {
+    return null;
+  }
+  // 사용자 검색 로직
+}
+
+let user = findUser(-1);
+if (user === null) {
+  console.log('유효하지 않은 ID입니다.');
+}
+```
