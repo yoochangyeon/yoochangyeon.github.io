@@ -1,0 +1,79 @@
+---
+interface Props {
+  url: string;
+}
+
+const { url } = Astro.props;
+
+// Fetch OG tags from the URL at build time
+let ogTitle = '';
+let ogDescription = '';
+let ogImage = '';
+let ogSiteName = '';
+
+try {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AstroBot/1.0)' },
+  });
+  const html = await res.text();
+
+  const getMetaContent = (html: string, property: string): string => {
+    const regex = new RegExp(`<meta[^>]*(?:property|name)=["']${property}["'][^>]*content=["']([^"']*)["']`, 'i');
+    const altRegex = new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*(?:property|name)=["']${property}["']`, 'i');
+    return regex.exec(html)?.[1] || altRegex.exec(html)?.[1] || '';
+  };
+
+  ogTitle = getMetaContent(html, 'og:title');
+  ogDescription = getMetaContent(html, 'og:description');
+  ogImage = getMetaContent(html, 'og:image');
+  ogSiteName = getMetaContent(html, 'og:site_name');
+} catch (e) {
+  ogTitle = url;
+}
+
+const hostname = new URL(url).hostname;
+const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+---
+
+<a
+  href={url}
+  target="_blank"
+  rel="noopener noreferrer"
+  class="github-card group block no-underline rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors overflow-hidden my-6"
+>
+  <div class="flex flex-col sm:flex-row">
+    <div class="flex-1 p-4 min-w-0">
+      <div class="flex items-center gap-2 mb-2">
+        <img src={favicon} alt="" width="16" height="16" class="rounded-sm" loading="lazy" />
+        <span class="text-xs text-gray-500 dark:text-gray-400 truncate">{ogSiteName || hostname}</span>
+      </div>
+      <p class="font-semibold text-sm text-gray-900 dark:text-white group-hover:text-primary transition-colors leading-snug line-clamp-2 mt-0 mb-1">
+        {ogTitle || url}
+      </p>
+      {ogDescription && (
+        <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed mt-0 mb-0">
+          {ogDescription}
+        </p>
+      )}
+    </div>
+    {ogImage && (
+      <div class="sm:w-[200px] sm:flex-shrink-0 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700">
+        <img
+          src={ogImage}
+          alt=""
+          class="w-full h-full object-cover sm:aspect-auto aspect-[2/1]"
+          loading="lazy"
+        />
+      </div>
+    )}
+  </div>
+</a>
+
+<style>
+  .github-card img {
+    margin: 0;
+  }
+  .github-card p {
+    margin: 0;
+  }
+</style>
