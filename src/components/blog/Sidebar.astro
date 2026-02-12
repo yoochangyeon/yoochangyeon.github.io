@@ -1,8 +1,9 @@
 ---
 import { getCollection } from 'astro:content';
-import { getPermalink, cleanSlug } from '~/utils/permalinks';
+import { getPermalink, getAsset, cleanSlug } from '~/utils/permalinks';
 import authorData from '~/data/author.json';
 import { Image } from 'astro:assets';
+import { Icon } from 'astro-icon/components';
 import profileImage from '~/assets/images/avatar.png';
 
 const { name, nameEn, tagline } = authorData;
@@ -46,9 +47,27 @@ const totalPosts = publishedPosts.length;
         </p>
       </div>
     </div>
-    <p class="text-sm text-gray-700 dark:text-gray-300">
+    <p class="text-sm text-gray-700 dark:text-gray-300 mb-4">
       {tagline}
     </p>
+    <div class="flex items-center gap-3">
+      <a
+        href="https://github.com/yoochangyeon"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+        aria-label="GitHub"
+      >
+        <Icon name="tabler:brand-github" class="w-5 h-5" />
+      </a>
+      <a
+        href={getAsset('/rss.xml')}
+        class="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+        aria-label="RSS"
+      >
+        <Icon name="tabler:rss" class="w-5 h-5" />
+      </a>
+    </div>
   </div>
 
   <!-- Category Tree -->
@@ -60,7 +79,7 @@ const totalPosts = publishedPosts.length;
     <nav class="space-y-2">
       <!-- All Posts -->
       <a
-        href={getPermalink('/blog')}
+        href={getPermalink('/')}
         class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors group"
       >
         <span class="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">

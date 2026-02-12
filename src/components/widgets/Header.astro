@@ -1,12 +1,13 @@
 ---
 import { Icon } from 'astro-icon/components';
+import { getCollection } from 'astro:content';
 import Logo from '~/components/Logo.astro';
 import ToggleTheme from '~/components/common/ToggleTheme.astro';
 import ToggleMenu from '~/components/common/ToggleMenu.astro';
 import Button from '~/components/ui/Button.astro';
 import SearchButton from '~/components/common/SearchButton.astro';
 
-import { getHomePermalink } from '~/utils/permalinks';
+import { getHomePermalink, getPermalink, cleanSlug } from '~/utils/permalinks';
 import { trimSlash, getAsset } from '~/utils/permalinks';
 import type { CallToAction } from '~/types';
 
@@ -46,6 +47,20 @@ const {
 } = Astro.props;
 
 const currentPath = `/${trimSlash(new URL(Astro.url).pathname)}`;
+
+// Fetch categories for mobile menu
+const posts = await getCollection('post');
+const publishedPosts = posts.filter((post) => !post.data.draft);
+const categoryMap = new Map<string, number>();
+publishedPosts.forEach((post) => {
+  const category = post.data.category;
+  if (category) {
+    categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+  }
+});
+const categories = Array.from(categoryMap.entries())
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count);
 ---
 
 <header
@@ -129,6 +144,32 @@ const currentPath = `/${trimSlash(new URL(Astro.url).pathname)}`;
           ))
         }
       </ul>
+      <!-- Mobile-only category navigation -->
+      <div class="md:hidden w-full px-4 py-4 border-t border-gray-200 dark:border-neutral-700 mt-2">
+        <h3 class="text-sm font-semibold text-muted dark:text-gray-400 uppercase tracking-wider mb-3">카테고리</h3>
+        <ul class="space-y-1">
+          <li>
+            <a
+              href={getHomePermalink()}
+              class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-base"
+            >
+              <span class="text-default dark:text-gray-300">전체 글</span>
+              <span class="text-sm text-muted dark:text-gray-400">{publishedPosts.length}</span>
+            </a>
+          </li>
+          {categories.map(({ name, count }) => (
+            <li>
+              <a
+                href={getPermalink(cleanSlug(name), 'category')}
+                class="flex items-center justify-between px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-base"
+              >
+                <span class="text-default dark:text-gray-300">{name}</span>
+                <span class="text-sm text-muted dark:text-gray-400">{count}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
     </nav>
     <div
       class:list={[

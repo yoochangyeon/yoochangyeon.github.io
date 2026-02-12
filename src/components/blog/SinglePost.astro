@@ -1,6 +1,4 @@
 ---
-import { Icon } from 'astro-icon/components';
-
 import Image from '~/components/common/Image.astro';
 import PostTags from '~/components/blog/Tags.astro';
 import SocialShare from '~/components/common/SocialShare.astro';
@@ -27,64 +25,70 @@ const { post, url, headings = [] } = Astro.props;
 
   <article>
     <header>
-      <div class="flex justify-between flex-col sm:flex-row max-w-3xl mx-auto mt-0 mb-2 px-4 sm:px-6 sm:items-center">
-        <p>
-          <Icon name="tabler:clock" class="w-4 h-4 inline-block -mt-0.5 dark:text-gray-400" />
-          <time datetime={String(post.publishDate)} class="inline-block">{getFormattedDate(post.publishDate)}</time>
-          {
-            post.author && (
-              <>
-                {' '}
-                · <Icon name="tabler:user" class="w-4 h-4 inline-block -mt-0.5 dark:text-gray-400" />
-                <span class="inline-block">{post.author}</span>
-              </>
-            )
-          }
-          {
-            post.category && (
-              <>
-                {' '}
-                ·{' '}
-                <a class="hover:underline inline-block" href={getPermalink(post.category.slug, 'category')}>
-                  {post.category.title}
-                </a>
-              </>
-            )
-          }
-          {
-            post.readingTime && (
-              <>
-                &nbsp;· <span>{post.readingTime}</span> min read
-              </>
-            )
-          }
-        </p>
-      </div>
+      <!-- Category label above title -->
+      {
+        post.category && (
+          <div class="max-w-3xl mx-auto px-4 sm:px-6 mb-3">
+            <a
+              href={getPermalink(post.category.slug, 'category')}
+              class="text-sm font-medium text-primary dark:text-blue-400 hover:underline"
+            >
+              {post.category.title}
+            </a>
+          </div>
+        )
+      }
 
+      <!-- Title -->
       <h1
-        class="px-4 sm:px-6 max-w-3xl mx-auto text-4xl md:text-5xl font-bold leading-tighter tracking-tighter font-heading"
+        class="px-4 sm:px-6 max-w-3xl mx-auto text-[1.75rem] sm:text-[2.25rem] md:text-[2.75rem] font-bold leading-[1.15] tracking-tight font-heading [text-wrap:balance] break-keep"
       >
         {post.title}
       </h1>
+
+      <!-- Metadata below title -->
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 mt-3 mb-2 flex flex-wrap items-center gap-x-1.5 text-sm text-muted dark:text-neutral-500">
+        <time datetime={String(post.publishDate)}>{getFormattedDate(post.publishDate)}</time>
+        {
+          post.author && (
+            <>
+              <span>·</span>
+              <span>{post.author}</span>
+            </>
+          )
+        }
+        {
+          post.readingTime && (
+            <>
+              <span>·</span>
+              <span>{post.readingTime} min read</span>
+            </>
+          )
+        }
+      </div>
+
+      <!-- Excerpt -->
       <p
-        class="max-w-3xl mx-auto mt-4 mb-8 px-4 sm:px-6 text-xl md:text-2xl text-muted dark:text-neutral-400"
+        class="max-w-3xl mx-auto mt-4 mb-8 px-4 sm:px-6 text-base sm:text-lg text-muted dark:text-neutral-400 leading-relaxed [text-wrap:pretty]"
       >
         {post.excerpt}
       </p>
 
       {
         post.image ? (
-          <Image
-            src={post.image}
-            class="w-full max-w-2xl mx-auto mb-6 sm:rounded-md bg-gray-400 dark:bg-neutral-700 object-cover"
-            widths={[400, 768]}
-            sizes="(max-width: 768px) 400px, 768px"
-            alt={post?.excerpt || ''}
-            width={768}
-            height={432}
-            loading="eager"
-            decoding="async"
-          />
+          <div class="max-w-2xl mx-auto mb-6 px-4 sm:px-0">
+            <Image
+              src={post.image}
+              class="w-full rounded-md bg-gray-400 dark:bg-neutral-700 object-cover"
+              widths={[400, 768]}
+              sizes="(max-width: 768px) 400px, 768px"
+              alt={post?.excerpt || ''}
+              width={768}
+              height={432}
+              loading="eager"
+              decoding="async"
+            />
+          </div>
         ) : (
           <div class="max-w-3xl mx-auto px-4 sm:px-6">
             <div class="border-t dark:border-neutral-700" />
