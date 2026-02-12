@@ -25,13 +25,13 @@ SpringMVC에서도 view를 반환하지 않고 json 형식의 데이터만 반�
 
 이 때 **@ResponseBody**를 사용해서 자바 객체를 HTTP 응답의 Body로 매핑해준다.
 
-Dispatcher Servlet을 거치지 않고 Controller에서 직접 응답을 반환한다.
+ViewResolver를 거치지 않고 HttpMessageConverter를 통해 응답 본문으로 직접 변환된다.
 
 > **@ResponseBody의 실행 흐름**
 > Client -> Request -> Dispatcher Servlet -> Handler Mapping ->
 > Controller (ResponseBody)-> Response -> Client
 
-View와는 완전히 분리된 REST API를 개발할 때 @Controller 어노테이션과 @ResponserBody를 계속 사용할 필요가 없다.
+View와는 완전히 분리된 REST API를 개발할 때 @Controller 어노테이션과 @ResponseBody를 계속 사용할 필요가 없다.
 
 @RestController는 @Controller + @ResponseBody이다.
 

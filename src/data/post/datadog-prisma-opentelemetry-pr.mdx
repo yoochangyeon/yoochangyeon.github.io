@@ -57,7 +57,7 @@ prisma.$on('query', (e) => {
 
 ### prisma가 Opentelemetry를 지원한다
 
-[prisma 공식 문서 (OpenTelemetry tracing)](http://https://www.prisma.io/docs/orm/prisma-client/observability-and-logging/opentelemetry-tracing) 를 확인해보면 opentelemetry를 사용해서 prisma의 세부 동작들을 모두 모니터링 할 수 있다고 한다.
+[prisma 공식 문서 (OpenTelemetry tracing)](https://www.prisma.io/docs/orm/prisma-client/observability-and-logging/opentelemetry-tracing) 를 확인해보면 opentelemetry를 사용해서 prisma의 세부 동작들을 모두 모니터링 할 수 있다고 한다.
 
 그러나 이 방법은 opentelemetry를 사용하는 방식이기 때문에 opentelemetry collector를 서버에 생성해두고 collector를 통해 수집되는 방식이었다. 그래서 이 방법을 그대로 사용하기에는 무리가 있었다.
 
@@ -244,7 +244,7 @@ dd-trace에서 TracerProvider()를 만들 때, [@opentelemetry/api의 Tracer인�
 
 문제를 정리하자면
 
-1. registerInstrujmentation()이 PrismaInstrumentation()에 ddTracer.TracerProvider()를 전달한다.
+1. registerInstrumentation()이 PrismaInstrumentation()에 ddTracer.TracerProvider()를 전달한다.
 
 2. 이 때 new PrismaInstrumentation()에서는@opentelemetry/sdk-trace-base의 Span생성자를 호출한다.
 

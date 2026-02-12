@@ -27,7 +27,7 @@ draft: false
 - '성별' 컬럼에 Index를 적용시키면 '남', '여'로만 구분되어서 값의 중복도가 크다. Index의 의미를 잃을 수 있다.
 - 즉 값의 중복도가 작은 컬럼들을 위주로 Index를 적용해주면 좋다.
 - B-Tree
-- MySQL에서 대부분의 인덱스 (Primary Key, Unique Key, Index, FullText)는 B-Tree 자료구조를 사용한다.
+- MySQL에서 대부분의 인덱스 (Primary Key, Unique Key, Index)는 B-Tree 자료구조를 사용한다. (FullText Index는 B-Tree가 아닌 Inverted Index(역색인)를 사용한다.)
 - 메모리 테이블은 hash Index가 사용된다.
 - Binary Search Tree와 유사하지만, 한 노드당 자식 노드를 2개 이상 둘 수 있다는 차이가 있다.
 - 어떤 값에 대해서도 같은 시간에 결과를 얻을 수 있다는 '균일성'이 장점이다.

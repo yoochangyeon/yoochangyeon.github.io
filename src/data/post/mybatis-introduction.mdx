@@ -11,10 +11,10 @@ draft: false
 
 # Mybatis
 
-Mybatis는 자바 오브젝트와 SQL사이의 자동 매핑 기능을 지원하는 ORM(Object relational Mapping)프레임워크이다.
+Mybatis는 자바 오브젝트와 SQL사이의 자동 매핑 기능을 지원하는 SQL Mapper 프레임워크이다.
 
 SQL을 별도의 파일로 분리해서 관리하게 해준다.
-Hibernate나 JAP(Java Persistence Api)처럼 새로운 DB프로그래밍 패러다임을 익혀야하는 부담 없이 SQL을 그대로 이용하면서 JDBC코드 작성의 불편함도 제거해주고 도메인 객체나 VO객체를 중심으로 개발이 가능하다는 장점이 있다.
+Hibernate나 JPA(Java Persistence API)처럼 새로운 DB프로그래밍 패러다임을 익혀야하는 부담 없이 SQL을 그대로 이용하면서 JDBC코드 작성의 불편함도 제거해주고 도메인 객체나 VO객체를 중심으로 개발이 가능하다는 장점이 있다.
 
 ## Mybatis의 특징
 
@@ -34,7 +34,7 @@ Java, C#, .NET, Ruby
 ![](~/assets/images/posts/mybatis-introduction/image-0.jpg)
 
 DB vender에서 제공하는 JDBC Driver가 있다.
-JDBC만을 사용하는 어플리캐이션은 Application Modules에서 JDBC Interfaces를 바로 호출하지만 JDBC Api를 감싸서 개발자가 조금더 편리하게 접근할 수 있도록 도와주는 것이 Mybatis이다.
+JDBC만을 사용하는 애플리케이션은 Application Modules에서 JDBC Interfaces를 바로 호출하지만 JDBC Api를 감싸서 개발자가 조금더 편리하게 접근할 수 있도록 도와주는 것이 Mybatis이다.
 
 서비스에서 DAO를 호출하고 DAO에서 Mybatis를 사용하게된다.
 
@@ -63,7 +63,7 @@ SqlSession은 개발자가 작성한 SQL문을 호출해주는 기능을 해준�
 - MyBatis 설정파일(SqlMapConfig.xml) : 데이터베이스의 접속 주소 정보나 Mapping 파일의 경로 등의 고정된 환경정보를 설정한다.
 - SqlSessionFactoryBuilder : MyBatis 설정 파일을 바탕으로 SqlSessionFactory를 생성한다.
 - SqlSessionFactory : SqlSession을 생성한다.
-- SqlSession : 핵심적인 역할을 하는 클래스로서 SQL 실행이다 트랙잭션 관리를 실행한다. SqlSession 오브젝트는 Thread-Safe 하지 않으므로 thread마다 필요에 따라 생성한다.
+- SqlSession : 핵심적인 역할을 하는 클래스로서 SQL 실행이나 트랜잭션 관리를 실행한다. SqlSession 오브젝트는 Thread-Safe 하지 않으므로 thread마다 필요에 따라 생성한다.
 - Mapping 파일(user.xml) : SQL문과 OR Mapping을 설정한다.
 
 ### Mybatis-Spring의 주요 컴포넌트
