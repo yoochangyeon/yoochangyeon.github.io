@@ -2,9 +2,9 @@
 publishDate: 2025-10-10T10:00:00Z
 updateDate: 2025-10-10T10:00:00Z
 author: "유창연"
-title: "HTTP 캐시 헤더 완벽 가이드: Cache-Control부터 304 Not Modified까지"
-excerpt: "브라우저와 CDN 캐싱을 제어하는 모든 HTTP 헤더를 실전 경험을 바탕으로 정리합니다. Cache-Control, ETag, 304 Not Modified의 동작 원리와 CloudFront 최적화 전략을 상세히 설명합니다."
-description: "HTTP 캐싱 메커니즘의 핵심인 Cache-Control, ETag, Last-Modified 헤더와 304 Not Modified 응답의 동작 원리를 상세히 분석합니다. 브라우저 캐시와 CDN(CloudFront) 최적화 전략을 실전 예제와 함께 제시합니다."
+title: "HTTP 캐시 헤더 정리: Cache-Control부터 304 Not Modified까지"
+excerpt: "브라우저와 CDN 캐싱을 제어하는 HTTP 헤더를 정리합니다. Cache-Control, ETag, 304 Not Modified의 동작 원리와 CloudFront에서의 캐싱 전략을 설명합니다."
+description: "Cache-Control, ETag, Last-Modified 헤더와 304 Not Modified 응답의 동작 원리를 정리합니다. 브라우저 캐시와 CDN(CloudFront) 캐싱 전략을 예제와 함께 설명합니다."
 image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&h=630&fit=crop"
 imageAlt: "네트워크 서버와 데이터 흐름을 나타내는 시각화 - HTTP 캐싱 메커니즘"
 category: "Fundamentals"
@@ -15,11 +15,11 @@ draft: false
 
 ## 들어가며
 
-웹 성능 최적화에서 **캐싱**만큼 효과적인 방법은 드뭅니다. 적절한 캐시 전략은 서버 부하를 줄이고, 네트워크 트래픽을 절감하며, 사용자 경험을 크게 개선합니다.
+웹 성능 최적화에서 캐싱은 효과가 큰 방법 중 하나입니다. 적절한 캐시 전략을 세우면 서버 부하와 네트워크 트래픽이 줄어들고, 페이지 로딩이 빨라집니다.
 
-하지만 HTTP 캐싱은 생각보다 복잡합니다. 브라우저 캐시, CDN 캐시, 조건부 요청, 재검증 등 다양한 개념이 얽혀 있고, 각각의 HTTP 헤더가 어떻게 상호작용하는지 이해해야 제대로 활용할 수 있습니다.
+다만 HTTP 캐싱은 생각보다 복잡합니다. 브라우저 캐시, CDN 캐시, 조건부 요청, 재검증 등 다양한 개념이 얽혀 있고, 각각의 HTTP 헤더가 어떻게 상호작용하는지 이해해야 제대로 활용할 수 있습니다.
 
-이 글에서는 실전 경험을 바탕으로 **HTTP 캐싱의 모든 것**을 정리합니다.
+이 글에서는 HTTP 캐싱 관련 헤더들을 정리합니다.
 
 ---
 
@@ -69,7 +69,7 @@ graph TB
 
 ---
 
-## 캐싱 관련 HTTP 헤더 완벽 정리
+## 캐싱 관련 HTTP 헤더 정리
 
 ### 1. Cache-Control (핵심 헤더)
 
@@ -450,7 +450,7 @@ exports.handler = async (event) => {
 
 ---
 
-## 304 Not Modified 완벽 가이드
+## 304 Not Modified 동작 방식
 
 ### 기본 개념
 
@@ -777,62 +777,15 @@ Status: 200 OK                 → 새 다운로드
 
 ---
 
-## 결론 및 핵심 요약
+## 마무리
 
-### 핵심 원칙
+리소스 유형별로 캐시 전략을 다르게 가져가는 것이 기본입니다.
 
-1. **🎯 정적 자산은 장기 캐싱**
-   ```http
-   Cache-Control: public, max-age=31536000, immutable
-   ```
-   - 파일명에 해시 포함 (버전 관리)
-   - 1년 캐싱, 재검증 불필요
+- 정적 자산(JS, CSS, 이미지): `Cache-Control: public, max-age=31536000, immutable`로 장기 캐싱하고, 파일명에 해시를 포함해서 버전 관리
+- HTML 페이지: `Cache-Control: public, max-age=0, must-revalidate`로 항상 재검증하되, 304 응답으로 트래픽 절감
+- API 응답: `max-age`와 `stale-while-revalidate`를 조합해서 신선도와 응답 속도의 균형 맞추기
+- 민감한 데이터: `no-store, private`으로 캐싱 자체를 차단
 
-2. **🎯 동적 콘텐츠는 적절한 재검증**
-   ```http
-   Cache-Control: public, max-age=60, stale-while-revalidate=600
-   ETag: "abc123"
-   ```
-   - 짧은 캐시 + 백그라운드 재검증
-   - ETag로 정확한 변경 감지
+CloudFront를 사용한다면 `s-maxage`로 CDN 캐시와 브라우저 캐시를 분리하고, Minimum TTL이 0보다 크면 `no-cache`가 무시된다는 점을 주의해야 합니다.
 
-3. **🎯 HTML은 항상 최신 유지**
-   ```http
-   Cache-Control: public, max-age=0, must-revalidate
-   ```
-   - 304 응답으로 빠른 검증
-
-4. **🎯 민감한 데이터는 캐싱 금지**
-   ```http
-   Cache-Control: no-store, private
-   ```
-
-### CDN 최적화 체크리스트
-
-- [ ] Origin에서 적절한 `Cache-Control` 헤더 설정
-- [ ] `s-maxage`로 CDN과 브라우저 캐시 분리
-- [ ] CloudFront TTL 설정으로 세밀한 제어
-- [ ] 캐시 키 최적화 (불필요한 쿼리 스트링 제거)
-- [ ] ETag 또는 Last-Modified 설정
-- [ ] Cache Behavior별 전략 수립
-- [ ] CloudWatch로 캐시 히트율 모니터링 (목표: 85%+)
-
-### 문제 해결 플로우
-
-```mermaid
-graph TB
-    A[캐시 문제 발생] --> B{증상은?}
-    B -->|캐시가 안 됨| C[Cache-Control 확인<br/>CloudFront TTL 확인]
-    B -->|캐시가 너무 오래 유지| D[max-age 감소<br/>must-revalidate 추가]
-    B -->|변경사항 반영 안 됨| E[ETag/Last-Modified 확인<br/>캐시 무효화]
-    B -->|304가 안 나옴| F[조건부 헤더 확인<br/>ETag 생성 로직 점검]
-```
-
-### 마무리
-
-HTTP 캐싱은 **웹 성능 최적화의 핵심**입니다. 적절한 캐시 전략으로:
-- ⚡ 페이지 로딩 속도 50% 이상 개선
-- 💰 서버 비용 30-70% 절감
-- 📊 대역폭 사용량 대폭 감소
-
-이 글에서 다룬 내용을 바탕으로 프로젝트에 맞는 최적의 캐싱 전략을 수립하시길 바랍니다!
+캐시가 제대로 동작하지 않을 때는 라우팅 순서대로 확인하면 됩니다. Cache-Control 헤더가 올바른지, CloudFront TTL이 오버라이드하고 있지 않은지, ETag/Last-Modified가 정상적으로 생성되는지 하나씩 따라가면 대부분 원인을 찾을 수 있습니다.
