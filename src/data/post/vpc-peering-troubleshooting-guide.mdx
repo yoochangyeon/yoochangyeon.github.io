@@ -15,76 +15,48 @@ draft: false
 
 ## 배경
 
-AWS에서 멀티 VPC 환경을 구성하다 보면 VPC 피어링(VPC Peering)을 통해 서로 다른 VPC 간 통신이 필요한 경우가 생깁니다. 특히 한 VPC에서 다른 VPC의 RDS 인스턴스에 접근해야 하는 상황은 흔히 발생합니다.
+VPC A에 애플리케이션 서버가 있고, VPC B에 RDS가 있는 구성이었다. VPC A의 서버에서 VPC B의 RDS(`example.rds.amazonaws.com`)에 접속해야 했다.
 
-이 글은 VPC 피어링을 구성하는 과정에서 마주친 두 가지 주요 문제와 해결 과정을 기록한 **삽질일기**입니다.
+VPC 피어링 연결을 만들었다. 콘솔에서 상태도 Active로 잘 떴다. 끝난 줄 알았는데, 실제로 통신이 안 됐다. 여기서부터 2시간 넘는 삽질이 시작됐다.
 
-### 문제 상황 요약
-
-- **VPC A**: 애플리케이션 서버가 실행되는 VPC
-- **VPC B**: RDS 데이터베이스가 있는 VPC (Private Subnet)
-- **목표**: VPC A의 서버에서 VPC B의 RDS(`example.rds.amazonaws.com`)에 접속
-
-VPC 피어링 연결은 성공적으로 생성되었지만, 실제 통신은 되지 않았습니다. 이 문제를 해결하는 데 **2시간 이상**이 소요되었고, 크게 두 가지 원인이 있었습니다.
+원인은 크게 두 가지였다.
 
 ---
 
-## 문제 1: 양방향 라우팅 테이블 설정 누락
+## 문제 1: 한쪽만 라우팅을 설정했다
 
-### 발생한 문제
-
-VPC 피어링 연결을 생성한 후, VPC A의 라우팅 테이블에만 VPC B로 향하는 경로를 추가했습니다. 하지만 **VPC B에서 VPC A로 돌아오는 경로를 추가하지 않아** 통신이 실패했습니다.
-
-### 증상
+피어링 연결을 만들고 VPC A의 라우팅 테이블에 VPC B로 가는 경로를 추가했다. 여기까지 하고 ping을 쳤는데 타임아웃이 떨어졌다.
 
 ```bash
-# VPC A의 EC2에서 VPC B의 리소스로 ping
 $ ping 10.1.0.100
-# 타임아웃 발생
 Request timeout for icmp_seq 0
 Request timeout for icmp_seq 1
 ```
 
-네트워크 패킷이 VPC B까지는 도달하지만, 응답 패킷이 VPC A로 돌아오지 못하는 상황이었습니다.
+패킷이 VPC B까지는 도달하는데, 응답이 돌아오지 못하는 상황이었다. 한참 헤매다가 깨달은 게, VPC B에서 VPC A로 돌아오는 경로를 안 만들었다는 것이다.
 
-### 원인 분석
+당연한 이야기인데, TCP든 ICMP든 응답 패킷이 돌아와야 한다. 돌아오는 길이 없으니 타임아웃이 나는 거였다.
 
-AWS VPC 피어링에서는 **양방향 라우팅 설정이 필수**입니다.
-
-TCP와 ICMP의 경우 반드시 양방향 경로가 필요하며, UDP는 경로 대칭 없이도 작동할 수 있지만 들어오는 UDP 메시지가 ICMP 응답을 트리거할 수 있어 대칭 경로가 올바른 구성입니다.
-
-**잘못된 구성:**
+잘못된 구성:
 ```
 VPC A (10.0.0.0/16)           VPC B (10.1.0.0/16)
 Route Table:                  Route Table:
-10.1.0.0/16 → pcx-xxxxx      (VPC A로 향하는 경로 없음) ❌
+10.1.0.0/16 → pcx-xxxxx      (VPC A로 향하는 경로 없음)
 ```
 
-**올바른 구성:**
+올바른 구성:
 ```
 VPC A (10.0.0.0/16)           VPC B (10.1.0.0/16)
 Route Table:                  Route Table:
-10.1.0.0/16 → pcx-xxxxx      10.0.0.0/16 → pcx-xxxxx ✅
+10.1.0.0/16 → pcx-xxxxx      10.0.0.0/16 → pcx-xxxxx
 ```
 
-### 해결 방법
+### 해결
 
-#### 1. VPC A의 라우팅 테이블 설정
+양쪽 VPC의 라우팅 테이블 모두에 경로를 추가해야 한다.
 
-```bash
-# AWS Console 또는 CLI로 설정
-# Destination: VPC B의 CIDR (10.1.0.0/16)
-# Target: VPC Peering Connection ID (pcx-xxxxx)
-```
+VPC A 라우팅 테이블:
 
-**AWS Console:**
-1. VPC → Route Tables → VPC A의 라우팅 테이블 선택
-2. Routes 탭 → Edit routes
-3. Add route:
-   - Destination: `10.1.0.0/16`
-   - Target: Peering Connection (`pcx-xxxxx`)
-
-**AWS CLI:**
 ```bash
 aws ec2 create-route \
   --route-table-id rtb-aaaaa \
@@ -92,21 +64,8 @@ aws ec2 create-route \
   --vpc-peering-connection-id pcx-xxxxx
 ```
 
-#### 2. VPC B의 라우팅 테이블 설정 (필수!)
+VPC B 라우팅 테이블 (이걸 빼먹었다):
 
-```bash
-# Destination: VPC A의 CIDR (10.0.0.0/16)
-# Target: VPC Peering Connection ID (pcx-xxxxx)
-```
-
-**AWS Console:**
-1. VPC → Route Tables → VPC B의 라우팅 테이블 선택
-2. Routes 탭 → Edit routes
-3. Add route:
-   - Destination: `10.0.0.0/16`
-   - Target: Peering Connection (`pcx-xxxxx`)
-
-**AWS CLI:**
 ```bash
 aws ec2 create-route \
   --route-table-id rtb-bbbbb \
@@ -114,98 +73,73 @@ aws ec2 create-route \
   --vpc-peering-connection-id pcx-xxxxx
 ```
 
-### 검증
+콘솔에서 하려면 VPC → Route Tables → 라우팅 테이블 선택 → Routes 탭 → Edit routes에서 추가하면 된다. 양쪽 VPC 모두 해줘야 한다.
+
+### 확인
 
 ```bash
-# VPC A의 EC2에서 VPC B의 리소스로 ping
 $ ping 10.1.0.100
 PING 10.1.0.100: 56 data bytes
 64 bytes from 10.1.0.100: icmp_seq=0 ttl=254 time=0.891 ms
 64 bytes from 10.1.0.100: icmp_seq=1 ttl=254 time=0.875 ms
 ```
 
-### 삽질 포인트
-
-> **한쪽 VPC에서만 라우팅을 설정하면 패킷이 도달은 하지만 응답이 돌아오지 않습니다.** 네트워크 트래픽은 항상 양방향이므로, 양쪽 VPC의 라우팅 테이블을 모두 설정해야 합니다.
+ping이 드디어 통과됐다. 그런데 아직 끝이 아니었다.
 
 ---
 
-## 문제 2: Private DNS 해석 비활성화
+## 문제 2: RDS 도메인으로 접속이 안 된다
 
-### 발생한 문제
-
-라우팅 테이블을 양방향으로 올바르게 설정했음에도 불구하고, VPC A에서 VPC B의 RDS 엔드포인트(`example.rds.amazonaws.com`)로 연결할 수 없었습니다.
-
-### 증상
+라우팅을 양쪽 다 설정했으니 이제 되겠지 싶었는데, RDS 엔드포인트로 연결하면 또 실패했다.
 
 ```bash
-# VPC A의 EC2에서 RDS 도메인으로 연결 시도
 $ mysql -h example.rds.amazonaws.com -u admin -p
 ERROR 2005 (HY000): Unknown MySQL server host 'example.rds.amazonaws.com' (-2)
+```
 
-# DNS 조회 실패
+DNS 조회 자체가 실패하고 있었다.
+
+```bash
 $ nslookup example.rds.amazonaws.com
-Server:         10.0.0.2
-Address:        10.0.0.2#53
-
 ** server can't find example.rds.amazonaws.com: NXDOMAIN
 ```
 
-IP 주소로는 접속이 가능하지만, 도메인 이름으로는 접속할 수 없었습니다.
+그런데 IP 주소로 직접 접속하면 잘 된다.
 
 ```bash
-# IP로 직접 연결 시도 (성공)
 $ mysql -h 10.1.0.50 -u admin -p
 Welcome to the MySQL monitor.
 ```
 
-### 원인 분석
+IP는 되는데 도메인만 안 된다. 이 시점에서 DNS 문제라는 건 알겠는데, 왜 DNS가 안 되는지를 몰랐다.
 
-RDS는 Private Subnet에 위치하므로 **Private IP만 할당**되어 있습니다. RDS의 엔드포인트(`example.rds.amazonaws.com`)는 AWS의 내부 DNS를 통해 Private IP로 해석되는데, 이는 **VPC 내부에서만 유효한 Private DNS**입니다.
+### 원인: VPC 피어링은 DNS 해석을 자동으로 안 해준다
 
-#### Private DNS가 작동하는 원리
+한참 찾아보고 나서야 알게 됐는데, RDS 엔드포인트(`example.rds.amazonaws.com`)는 VPC B 내부에서만 유효한 Private DNS 이름이다. VPC A의 DNS Resolver는 VPC B의 Private DNS를 해석할 수가 없다.
 
 ```mermaid
 graph LR
     A[VPC A의 EC2] -->|DNS 쿼리| B[VPC A DNS Resolver]
-    B -->|피어링 DNS 해석 없음| C[해석 실패 ❌]
+    B -->|VPC B의 DNS를 모름| C[해석 실패]
 
     D[VPC B의 리소스] -->|내부 DNS| E[example.rds.amazonaws.com]
     E -->|해석| F[10.1.0.50]
 ```
 
-기본적으로 VPC 피어링 연결은 **DNS 쿼리 해석을 지원하지 않습니다**. 즉, VPC A는 VPC B의 Private DNS 이름을 해석할 수 없습니다.
+VPC 피어링을 만들었다고 DNS까지 자동으로 연동되는 게 아니었다. 명시적으로 활성화해야 하는 설정이 두 가지 있었다.
 
-#### 필수 요구사항
+하나는 양쪽 VPC의 DNS 설정이고, 다른 하나는 피어링 연결 자체의 DNS 해석 옵션이다.
 
-Private DNS 해석을 활성화하려면:
+### 해결 1: 양쪽 VPC에서 DNS 설정 활성화
 
-1. **양쪽 VPC에서 DNS 관련 설정 활성화**
-   - `enableDnsHostnames`: VPC 리소스에 퍼블릭 DNS 호스트 이름 할당
-   - `enableDnsResolution`: VPC 내 DNS 해석 활성화
+VPC A와 VPC B 모두에서 `enableDnsHostnames`와 `enableDnsSupport`를 켜야 한다.
 
-2. **VPC 피어링 연결에서 DNS 해석 옵션 활성화**
-   - Requester VPC DNS resolution
-   - Accepter VPC DNS resolution
+콘솔에서는 VPC → Your VPCs → VPC 선택 → Actions에서 Edit DNS hostnames, Edit DNS resolution 각각 활성화하면 된다.
 
-### 해결 방법
+CLI로 하면:
 
-#### 1. VPC DNS 설정 확인 및 활성화
-
-**VPC A와 VPC B 모두**에서 다음 설정을 활성화해야 합니다:
-
-**AWS Console:**
-```
-VPC → Your VPCs → VPC 선택 → Actions → Edit DNS hostnames
-- Enable DNS hostnames: ✅ 활성화
-
-VPC → Your VPCs → VPC 선택 → Actions → Edit DNS resolution
-- Enable DNS resolution: ✅ 활성화
-```
-
-**AWS CLI:**
 ```bash
-# VPC A에서 DNS 설정 활성화
+# VPC A
 aws ec2 modify-vpc-attribute \
   --vpc-id vpc-aaaaa \
   --enable-dns-hostnames
@@ -214,7 +148,7 @@ aws ec2 modify-vpc-attribute \
   --vpc-id vpc-aaaaa \
   --enable-dns-support
 
-# VPC B에서 DNS 설정 활성화
+# VPC B
 aws ec2 modify-vpc-attribute \
   --vpc-id vpc-bbbbb \
   --enable-dns-hostnames
@@ -224,22 +158,14 @@ aws ec2 modify-vpc-attribute \
   --enable-dns-support
 ```
 
-#### 2. VPC 피어링 연결에서 DNS 해석 활성화
+### 해결 2: 피어링 연결에서 DNS 해석 옵션 활성화
 
-**중요:** DNS 해석 옵션은 피어링 연결 생성 시에는 활성화할 수 없습니다. 피어링 연결이 **Active 상태일 때만** 수정할 수 있습니다.
+여기서 또 하나 알게 된 건데, 이 옵션은 피어링 연결을 만들 때는 설정할 수가 없다. 피어링이 Active 상태가 된 후에만 수정할 수 있다. 처음에 이걸 모르고 피어링 생성 화면에서 DNS 옵션을 찾아 헤맸다.
 
-**AWS Console:**
-```
-VPC → Peering Connections → 피어링 연결 선택 → Actions → Edit DNS Settings
+콘솔에서는 VPC → Peering Connections → 피어링 선택 → Actions → Edit DNS Settings에서 Requester/Accepter 양쪽 DNS resolution을 모두 활성화한다.
 
-Requester VPC DNS resolution:
-- ✅ Allow accepter VPC (VPC B) to resolve DNS of requester VPC (VPC A)
+CLI로 하면:
 
-Accepter VPC DNS resolution:
-- ✅ Allow requester VPC (VPC A) to resolve DNS of accepter VPC (VPC B)
-```
-
-**AWS CLI:**
 ```bash
 # Requester VPC에서 Accepter VPC의 DNS 해석 활성화
 aws ec2 modify-vpc-peering-connection-options \
@@ -252,7 +178,7 @@ aws ec2 modify-vpc-peering-connection-options \
   --accepter-peering-connection-options AllowDnsResolutionFromRemoteVpc=true
 ```
 
-#### 3. DNS 설정 확인
+설정이 제대로 됐는지 확인하려면:
 
 ```bash
 # VPC 설정 확인
@@ -269,32 +195,30 @@ aws ec2 describe-vpc-peering-connections \
   --vpc-peering-connection-ids pcx-xxxxx
 ```
 
-### 검증
+### 확인
 
 ```bash
-# VPC A의 EC2에서 RDS 도메인 조회
 $ nslookup example.rds.amazonaws.com
 Server:         10.0.0.2
 Address:        10.0.0.2#53
 
 Non-authoritative answer:
 Name:    example.rds.amazonaws.com
-Address: 10.1.0.50  # VPC B의 Private IP로 정상 해석 ✅
+Address: 10.1.0.50  # VPC B의 Private IP로 정상 해석됨
 
-# RDS 연결 테스트
 $ mysql -h example.rds.amazonaws.com -u admin -p
 Welcome to the MySQL monitor.
 ```
 
-### 삽질 포인트
-
-> **Private Subnet의 RDS는 Private DNS 이름만 사용합니다.** VPC 피어링만으로는 DNS 해석이 자동으로 되지 않으므로, 반드시 DNS 해석 옵션을 활성화해야 도메인 이름으로 접근할 수 있습니다.
+드디어 도메인으로도 접속이 됐다.
 
 ---
 
-## 완성된 VPC 피어링 아키텍처
+## 최종 구성
 
-### 최종 구성도
+결국 이 모든 설정이 맞아야 VPC 피어링이 제대로 동작한다.
+
+### 아키텍처
 
 ```mermaid
 graph TB
@@ -321,154 +245,136 @@ graph TB
     PCX -.DNS 해석.-> B_DNS
 ```
 
-### 설정 체크리스트
+### 설정 요약
 
-| 항목 | VPC A | VPC B | 설명 |
+| 항목 | VPC A | VPC B | 비고 |
 |------|-------|-------|------|
-| **라우팅 테이블** | 10.1.0.0/16 → pcx-xxxxx | 10.0.0.0/16 → pcx-xxxxx | 양방향 필수 |
-| **enableDnsHostnames** | ✅ Enabled | ✅ Enabled | 양쪽 VPC 모두 |
-| **enableDnsResolution** | ✅ Enabled | ✅ Enabled | 양쪽 VPC 모두 |
-| **Peering DNS Resolution** | ✅ Requester | ✅ Accepter | 피어링 연결 옵션 |
-| **Security Group** | Outbound 허용 | Inbound 허용 | 필요한 포트만 |
-| **Network ACL** | 양방향 허용 | 양방향 허용 | 상태 비저장 |
+| 라우팅 테이블 | 10.1.0.0/16 → pcx-xxxxx | 10.0.0.0/16 → pcx-xxxxx | 양방향 필수 |
+| enableDnsHostnames | Enabled | Enabled | 양쪽 VPC 모두 |
+| enableDnsResolution | Enabled | Enabled | 양쪽 VPC 모두 |
+| Peering DNS Resolution | Requester | Accepter | 피어링 연결 옵션 |
+| Security Group | Outbound 허용 | Inbound 허용 | 필요한 포트만 |
+| Network ACL | 양방향 허용 | 양방향 허용 | 상태 비저장 |
 
 ---
 
-## 추가 고려사항
+## 놓치기 쉬운 것들
 
-### 1. Security Group 설정
+### Security Group
 
-라우팅과 DNS 해석만으로는 통신이 완전하지 않습니다. **Security Group**도 올바르게 설정해야 합니다.
+라우팅이랑 DNS를 다 맞춰놨는데도 안 되면, Security Group을 확인해봐야 한다. 나도 처음에 이것 때문에 또 헤맸다.
 
-**VPC B의 RDS Security Group (Inbound):**
+VPC B의 RDS Security Group에 VPC A에서 오는 트래픽을 허용해줘야 한다.
+
 ```
+Inbound:
 Type: MySQL/Aurora
 Protocol: TCP
 Port: 3306
-Source: VPC A의 CIDR (10.0.0.0/16) 또는 특정 EC2 Security Group
+Source: 10.0.0.0/16 (VPC A의 CIDR) 또는 EC2의 Security Group ID
 ```
 
-**VPC A의 EC2 Security Group (Outbound):**
+VPC A의 EC2 Security Group Outbound도 열려있는지 확인한다.
+
 ```
+Outbound:
 Type: MySQL/Aurora
 Protocol: TCP
 Port: 3306
-Destination: VPC B의 CIDR (10.1.0.0/16) 또는 RDS Security Group
+Destination: 10.1.0.0/16 (VPC B의 CIDR) 또는 RDS Security Group ID
 ```
 
-### 2. Network ACL
+### Network ACL
 
-Security Group이 상태 저장(Stateful)인 반면, Network ACL은 **상태 비저장(Stateless)**이므로 양방향 규칙이 필요합니다.
+Security Group은 상태 저장(Stateful)이라서 인바운드를 허용하면 응답은 자동으로 나간다. 그런데 Network ACL은 상태 비저장(Stateless)이라 양방향 규칙을 따로 만들어야 한다.
 
-**VPC A의 Network ACL:**
-```
-Inbound Rules:
-- Rule 100: ALL Traffic from 10.1.0.0/16 - ALLOW
-
-Outbound Rules:
-- Rule 100: ALL Traffic to 10.1.0.0/16 - ALLOW
-```
-
-**VPC B의 Network ACL:**
-```
-Inbound Rules:
-- Rule 100: ALL Traffic from 10.0.0.0/16 - ALLOW
-
-Outbound Rules:
-- Rule 100: ALL Traffic to 10.0.0.0/16 - ALLOW
-```
-
-### 3. CIDR 블록 중복 방지
-
-VPC 피어링에서 **CIDR 블록이 겹치면 연결 자체가 불가능**합니다.
+기본 Network ACL은 모든 트래픽을 허용하고 있어서 보통은 건드릴 일이 없지만, 커스텀 ACL을 사용하고 있다면 확인이 필요하다.
 
 ```
-❌ 불가능한 경우:
+VPC A Network ACL:
+Inbound  - Rule 100: ALL Traffic from 10.1.0.0/16 - ALLOW
+Outbound - Rule 100: ALL Traffic to 10.1.0.0/16 - ALLOW
+
+VPC B Network ACL:
+Inbound  - Rule 100: ALL Traffic from 10.0.0.0/16 - ALLOW
+Outbound - Rule 100: ALL Traffic to 10.0.0.0/16 - ALLOW
+```
+
+### CIDR 블록 중복
+
+VPC 피어링에서 CIDR 블록이 겹치면 연결 자체가 안 만들어진다. 여러 VPC와 피어링하는 경우에 CIDR 설계를 처음부터 잘 해놔야 한다.
+
+```
+안 되는 경우:
 VPC A: 10.0.0.0/16
-VPC B: 10.0.0.0/16  (중복!)
+VPC B: 10.0.0.0/16  (중복)
 
-✅ 가능한 경우:
+되는 경우:
 VPC A: 10.0.0.0/16
-VPC B: 10.1.0.0/16  (비중복)
+VPC B: 10.1.0.0/16
 ```
 
-여러 VPC와 피어링하는 경우, CIDR 블록 관리를 철저히 해야 합니다.
+### 세밀한 라우팅
 
-### 4. 세밀한 라우팅 (선택 사항)
-
-전체 VPC CIDR 대신 특정 서브넷이나 리소스로만 트래픽을 제한할 수 있습니다.
+전체 VPC CIDR을 라우팅하지 않고, 필요한 서브넷이나 IP만 열어둘 수도 있다.
 
 ```bash
-# 전체 VPC CIDR 대신
-Destination: 10.1.0.0/24  # 특정 서브넷만
+# 특정 서브넷만
+Destination: 10.1.0.0/24
 Target: pcx-xxxxx
 
-# 또는 개별 IP
-Destination: 10.1.0.50/32  # RDS IP만
+# RDS IP만
+Destination: 10.1.0.50/32
 Target: pcx-xxxxx
 ```
 
-이 방식은 보안을 강화하고, 불필요한 트래픽을 줄일 수 있습니다.
+보안상 필요한 범위만 열어두는 게 맞긴 한데, 나중에 VPC B에 리소스가 추가되면 라우팅도 같이 수정해야 하니까 운영 편의성과의 트레이드오프가 있다.
 
 ---
 
-## 트러블슈팅 가이드
+## 연결이 안 될 때 확인 순서
 
-### 연결이 안 될 때 체크리스트
+삽질하면서 정리한 디버깅 순서다. 다음에 같은 문제가 생기면 이 순서대로 확인하려고 남겨둔다.
 
-#### 1. 라우팅 테이블 확인
+### 1. 라우팅 테이블
 
 ```bash
-# VPC A의 라우팅 테이블
 aws ec2 describe-route-tables \
   --filters "Name=vpc-id,Values=vpc-aaaaa" \
   --query "RouteTables[*].Routes"
 
-# VPC B의 라우팅 테이블
 aws ec2 describe-route-tables \
   --filters "Name=vpc-id,Values=vpc-bbbbb" \
   --query "RouteTables[*].Routes"
 ```
 
-**확인 사항:**
-- [ ] VPC A → VPC B로 향하는 경로가 있는가?
-- [ ] VPC B → VPC A로 향하는 경로가 있는가?
-- [ ] Target이 올바른 피어링 연결 ID인가?
-- [ ] Route 상태가 `active`인가? (`blackhole`가 아닌지 확인)
+양쪽 VPC에 상대방 CIDR로의 경로가 있는지, Target이 올바른 피어링 연결 ID인지, Route 상태가 `active`인지(`blackhole`면 피어링이 끊긴 것) 확인한다.
 
-#### 2. DNS 설정 확인
+### 2. DNS 설정
 
 ```bash
-# VPC DNS 설정 확인
 aws ec2 describe-vpcs \
   --vpc-ids vpc-aaaaa vpc-bbbbb \
   --query "Vpcs[*].[VpcId, EnableDnsHostnames, EnableDnsSupport]"
 
-# 피어링 DNS 설정 확인
 aws ec2 describe-vpc-peering-connections \
   --vpc-peering-connection-ids pcx-xxxxx \
   --query "VpcPeeringConnections[*].[RequesterVpcInfo.PeeringOptions, AccepterVpcInfo.PeeringOptions]"
 ```
 
-**확인 사항:**
-- [ ] 양쪽 VPC의 `EnableDnsHostnames`가 `true`인가?
-- [ ] 양쪽 VPC의 `EnableDnsSupport`가 `true`인가?
-- [ ] 피어링의 `AllowDnsResolutionFromRemoteVpc`가 양방향 모두 `true`인가?
+양쪽 VPC의 `EnableDnsHostnames`, `EnableDnsSupport`가 `true`인지, 피어링의 `AllowDnsResolutionFromRemoteVpc`가 양방향 모두 `true`인지 확인한다.
 
-#### 3. Security Group 확인
+### 3. Security Group
 
 ```bash
-# RDS Security Group 확인
 aws ec2 describe-security-groups \
   --group-ids sg-xxxxx \
   --query "SecurityGroups[*].IpPermissions"
 ```
 
-**확인 사항:**
-- [ ] RDS Security Group이 VPC A의 CIDR 또는 EC2 SG를 허용하는가?
-- [ ] 필요한 포트(3306, 5432 등)가 열려 있는가?
+RDS Security Group이 VPC A의 CIDR을 허용하는지, 포트(3306, 5432 등)가 열려 있는지 확인한다.
 
-#### 4. 피어링 연결 상태 확인
+### 4. 피어링 연결 상태
 
 ```bash
 aws ec2 describe-vpc-peering-connections \
@@ -476,31 +382,29 @@ aws ec2 describe-vpc-peering-connections \
   --query "VpcPeeringConnections[*].Status"
 ```
 
-**확인 사항:**
-- [ ] 피어링 상태가 `active`인가?
-- [ ] `pending-acceptance` 상태로 남아있지 않은가?
+상태가 `active`인지 확인한다. `pending-acceptance`로 남아있으면 Accepter 쪽에서 수락을 안 한 것이다.
 
-#### 5. 네트워크 연결 테스트
+### 5. 네트워크 연결 테스트
 
 ```bash
-# ICMP 테스트 (Security Group에서 허용된 경우)
+# ICMP
 ping 10.1.0.50
 
-# TCP 연결 테스트
+# TCP
 telnet 10.1.0.50 3306
 
-# 또는 nc (netcat) 사용
+# 또는 nc
 nc -zv 10.1.0.50 3306
 ```
 
-### 일반적인 에러와 해결
+### 에러별 원인 정리
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| Connection timeout | 라우팅 테이블 미설정 또는 Security Group 차단 | 양방향 라우팅 확인, SG Inbound/Outbound 규칙 확인 |
-| DNS resolution failed | DNS 해석 비활성화 | VPC DNS 설정 활성화, 피어링 DNS 옵션 활성화 |
-| Route state: blackhole | 피어링이 pending 또는 삭제됨 | 피어링 상태를 `active`로 변경 |
-| No route to host | Network ACL 차단 | Network ACL의 양방향 규칙 확인 |
+| Connection timeout | 라우팅 테이블 미설정 또는 SG 차단 | 양방향 라우팅 확인, SG 규칙 확인 |
+| DNS resolution failed | DNS 해석 비활성화 | VPC DNS 설정 + 피어링 DNS 옵션 활성화 |
+| Route state: blackhole | 피어링이 pending 또는 삭제됨 | 피어링 상태 확인 |
+| No route to host | Network ACL 차단 | ACL 양방향 규칙 확인 |
 
 ---
 
