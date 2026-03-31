@@ -65,9 +65,9 @@ Redis 없이도 API가 동작하도록 임시 전환. 서비스 복구 확인.
 
 ```env
 CACHE_DRIVER=redis
-REDIS_HOST=192.168.0.73    # 새 Redis 주소
-REDIS_PORT=10050           # 새 포트
-REDIS_PASSWORD=            # 패스워드 변경
+REDIS_HOST=10.0.0.xx      # 새 Redis 주소
+REDIS_PORT=6xxx            # 새 포트
+REDIS_PASSWORD=****        # 패스워드 변경
 ```
 
 마지막으로 `.env` 변경사항을 반영하기 위해 `config:cache`를 실행했다.
@@ -124,9 +124,9 @@ market-worker-production-push:market-worker-production-push_02   RUNNING   pid 3
 ```bash
 $ grep -E "REDIS_|QUEUE_" .env
 QUEUE_CONNECTION=database
-REDIS_HOST=192.168.0.73
-REDIS_PORT=10050
-REDIS_PASSWORD=
+REDIS_HOST=10.0.0.xx
+REDIS_PORT=6xxx
+REDIS_PASSWORD=****
 
 $ php artisan tinker --execute="echo \Illuminate\Support\Facades\Redis::ping();"
 1   # Redis 연결 정상
@@ -169,7 +169,7 @@ Supervisor가 RUNNING이라고 보여준 13개 워커는 사실상 좀비였다.
 
 ```ini
 # /etc/supervisor/conf.d/market-worker-production.conf
-command=php /home/market/api/production/current/artisan queue:work --sleep=3 --tries=3 --timeout=0
+command=php /home/project/artisan queue:work --sleep=3 --tries=3 --timeout=0
 numprocs=8
 ```
 
@@ -195,7 +195,7 @@ cron은 정상 등록되어 있었다.
 
 ```bash
 $ sudo crontab -u www-data -l
-* * * * * cd /home/market/api/production/current && php8.2 artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /home/project && php8.2 artisan schedule:run >> /dev/null 2>&1
 ```
 
 수동 실행해보니 대부분의 작업이 안 돌았다.
@@ -211,7 +211,7 @@ $ sudo -u www-data php8.2 artisan schedule:run 2>&1
 Redis에서 직접 키를 조회하니 뮤텍스 키 3개가 남아있었다.
 
 ```bash
-$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*"
+$ redis-cli -h 10.0.0.xx -p 6xxx KEYS "*schedule*"
 1) "laravel_production_database_laravel_production_cache_:framework/schedule-feb3f1..."
 2) "laravel_production_database_laravel_production_cache_:framework/schedule-3ddd80..."
 3) "laravel_production_database_laravel_production_cache_:framework/schedule-708cf9..."
@@ -224,11 +224,11 @@ $ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*"
 Redis CLI로 직접 삭제했다.
 
 ```bash
-$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*" | \
-    xargs -r redis-cli -h 192.168.0.73 -p 10050 DEL
+$ redis-cli -h 10.0.0.xx -p 6xxx KEYS "*schedule*" | \
+    xargs -r redis-cli -h 10.0.0.xx -p 6xxx DEL
 (integer) 3
 
-$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*"
+$ redis-cli -h 10.0.0.xx -p 6xxx KEYS "*schedule*"
 (empty array)   # 정리 완료
 ```
 
