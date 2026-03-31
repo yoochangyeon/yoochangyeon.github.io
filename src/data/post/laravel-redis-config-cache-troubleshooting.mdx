@@ -1,0 +1,482 @@
+---
+publishDate: 2026-03-10T00:00:00Z
+updateDate: 2026-03-31T00:00:00Z
+author: "유창연"
+title: "Redis 장애 복구 후 config:cache가 만든 연쇄 장애"
+excerpt: "새벽에 Redis가 죽어서 복구했는데, config:cache 한 줄 때문에 주문, 알림, 스케줄러, 큐 워커가 전부 멈췄다. 에러 로그도 없이. 6시간 뒤에야 발견한 이 장애를 추적한 기록."
+description: "Laravel 9에서 Redis 장애 복구 중 config:cache를 실행했더니 env()가 null을 반환하면서 주문 처리, 슬랙 알림, 스케줄러, 큐 워커가 조용히 멈춘 연쇄 장애 기록."
+image: "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?w=1200&h=630&fit=crop"
+imageAlt: "서버 인프라와 코드 디버깅을 나타내는 이미지"
+category: "Troubleshooting"
+tags: ["laravel", "redis", "supervisor", "debugging"]
+keywords: ["Laravel config:cache", "env() null", "Redis 장애 복구", "Laravel env vs config", "Supervisor 좀비 워커", "Laravel 스케줄러 뮤텍스", "config:clear", "Laravel 트러블슈팅", "Redis 연쇄 장애", "withoutOverlapping 뮤텍스"]
+draft: false
+---
+
+# Redis 장애 복구 후 config:cache가 만든 연쇄 장애
+
+새벽에 Redis가 죽었고, 복구하면서 `php artisan config:cache`를 한 번 실행했다. 에러는 없었다. 서비스도 정상으로 보였다.
+
+6시간 뒤에야 알았다. 주문 처리, 슬랙 알림, 스케줄러, 큐 워커. 자동화된 것들이 전부 멈춰 있었다. 에러 로그 한 줄 없이.
+
+## 환경
+
+- Framework: Laravel 9 (PHP 8.2)
+- Cache Driver: Redis (production) / File (develop)
+- Queue Driver: Database
+- Scheduler: Cron (`schedule:run`, www-data 유저)
+- Queue Worker: Supervisor (default 8 workers + push 3 workers)
+- Server: Ubuntu 22.04
+
+---
+
+## 1. 장애 발생
+
+### 새벽 ~03:00
+
+기존 Redis 서버가 갑자기 죽었다. Sentry에 `RedisException: No route to host`가 쏟아졌다.
+
+```
+RedisException: No route to host
+#0 PhpRedisConnector.php(161): Redis::connect
+#1 PhpRedisConnector.php(161): PhpRedisConnector::establishConnection
+...
+#10 RedisStore.php(62): RedisStore::get
+#11 Repository.php(99): Repository::get
+#12 RateLimiter.php(139): RateLimiter::attempts
+```
+
+API 요청(Rate Limiter), 스케줄러(뮤텍스), 큐 워커 모두 Redis에 의존하고 있어서 서비스 전체가 마비됐다.
+
+### 긴급 조치
+
+순서대로 세 단계로 조치했다.
+
+먼저 캐시 드라이버를 file로 임시 변경했다.
+
+```env
+# .env 변경
+CACHE_DRIVER=file  # redis → file
+```
+
+Redis 없이도 API가 동작하도록 임시 전환. 서비스 복구 확인.
+
+다음으로 새 Redis 서버를 구축하고 .env를 업데이트했다.
+
+```env
+CACHE_DRIVER=redis
+REDIS_HOST=192.168.0.73    # 새 Redis 주소
+REDIS_PORT=10050           # 새 포트
+REDIS_PASSWORD=            # 패스워드 변경
+```
+
+마지막으로 `.env` 변경사항을 반영하기 위해 `config:cache`를 실행했다.
+
+```bash
+php artisan config:cache
+```
+
+별다른 에러 없이 완료. 서비스도 정상인 것 같았다.
+
+이 시점에서 2차 장애가 시작됐다. 에러가 안 보였기 때문에 한참 동안 몰랐다.
+
+---
+
+## 2. 2차 장애 발견
+
+약 6시간 뒤, 자동화 상태를 확인하려고 서버에 접속했다. 겉으로는 다 RUNNING이었는데, 하나씩 열어보니 아무것도 안 돌아가고 있었다.
+
+### 2-1. 스케줄러 뮤텍스 확인
+
+Redis 장애 시 실행 중이던 스케줄 작업의 `withoutOverlapping()` 뮤텍스가 해제되지 않았을 것으로 예상하고, `schedule:clear-cache`를 실행했다.
+
+```bash
+$ php artisan schedule:clear-cache
+
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' users:main cart_excel_process].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' gateway:vvic product_update].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' gateway:vvic product_request].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' gateway:alibaba1688 batch_product_sync --limit=500].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' alibaba1688:category-translate].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' gateway:vvic product].
+  INFO  Deleting mutex for ['/usr/bin/php8.2' 'artisan' gateway:vvic product2].
+```
+
+7개의 뮤텍스가 걸려있었다. 삭제 완료.
+
+### 2-2. Supervisor 큐 워커 상태 확인
+
+```bash
+$ sudo supervisorctl status
+market-worker-dev:market-worker-dev_00                           RUNNING   pid 3194706, uptime 5:52:43
+market-worker-production:market-worker-production_00             RUNNING   pid 3194708, uptime 5:52:43
+market-worker-production:market-worker-production_01             RUNNING   pid 3194709, uptime 5:52:43
+...
+market-worker-production-push:market-worker-production-push_00   RUNNING   pid 3194716, uptime 5:52:43
+market-worker-production-push:market-worker-production-push_01   RUNNING   pid 3194717, uptime 5:52:43
+market-worker-production-push:market-worker-production-push_02   RUNNING   pid 3194718, uptime 5:52:43
+```
+
+13개 워커 모두 RUNNING. 겉보기에는 정상이었다.
+
+### 2-3. 큐 설정 및 Redis 연결 확인
+
+```bash
+$ grep -E "REDIS_|QUEUE_" .env
+QUEUE_CONNECTION=database
+REDIS_HOST=192.168.0.73
+REDIS_PORT=10050
+REDIS_PASSWORD=
+
+$ php artisan tinker --execute="echo \Illuminate\Support\Facades\Redis::ping();"
+1   # Redis 연결 정상
+```
+
+큐는 Database 드라이버, Redis 연결도 정상. 여기까지는 괜찮아 보였다.
+
+### 2-4. 큐에 Job이 쌓여있었다
+
+```bash
+$ php artisan tinker --execute="echo \Illuminate\Support\Facades\Queue::size();"
+2
+```
+
+`Queue::size()`는 2개만 반환했다. 이 메서드는 default 큐만 카운트한다. `push` 큐는 별도여서 여기에 안 잡힌다. DB에서 직접 전체 Job을 조회하니 상황이 달랐다.
+
+```bash
+242982033 | queue: push | attempts: 0 | reserved_at:  | available_at: 2026-03-10 12:15:31
+243009747 | queue: push | attempts: 0 | reserved_at:  | available_at: 2026-03-10 13:33:58
+243125170 | queue: push | attempts: 0 | reserved_at:  | available_at: 2026-03-10 23:22:42
+...
+244459711 | queue: push | attempts: 0 | reserved_at:  | available_at: 2026-03-20 00:20:30
+244496918 | queue: default | attempts: 0 | reserved_at:  | available_at: 2026-03-10 09:30:45
+```
+
+push Job 79개, default Job 1개. 전부 `attempts: 0`, `reserved_at: null`. 워커가 한 번도 픽업하지 않은 상태였다.
+
+```bash
+$ php artisan tinker --execute="echo 'Failed: ' . DB::table('failed_jobs')->count();"
+Failed: 7983
+```
+
+실패한 Job도 7,983건 쌓여있었다.
+
+### 2-5. 워커가 좀비였다
+
+Supervisor가 RUNNING이라고 보여준 13개 워커는 사실상 좀비였다. Redis 장애 시점에 DB 커넥션이 끊어진 채로, 아무 Job도 처리하지 않고 프로세스만 살아있었다.
+
+왜 죽지 않았을까? Supervisor 설정을 보면 답이 나온다.
+
+```ini
+# /etc/supervisor/conf.d/market-worker-production.conf
+command=php /home/market/api/production/current/artisan queue:work --sleep=3 --tries=3 --timeout=0
+numprocs=8
+```
+
+`--timeout=0`은 타임아웃 없음이다. 커넥션이 끊어져도 프로세스는 죽지 않는다. Supervisor 입장에서는 프로세스가 살아있으니 정상이라고 판단한다.
+
+새 프로세스로 수동 실행하면 잘 동작했다.
+
+```bash
+$ sudo -u www-data php artisan queue:work --queue=push --once 2>&1
+  INFO  Processing jobs from the [push] queue.
+```
+
+워커를 재시작했다.
+
+```bash
+$ sudo supervisorctl restart all
+# 13개 워커 모두 stopped → started
+```
+
+### 2-6. 스케줄러도 안 돌고 있었다
+
+cron은 정상 등록되어 있었다.
+
+```bash
+$ sudo crontab -u www-data -l
+* * * * * cd /home/market/api/production/current && php8.2 artisan schedule:run >> /dev/null 2>&1
+```
+
+수동 실행해보니 대부분의 작업이 안 돌았다.
+
+```bash
+$ sudo -u www-data php8.2 artisan schedule:run 2>&1
+  2026-03-10 09:41:10 Running ['artisan' users:main cart_excel_process] ... DONE
+  2026-03-10 09:41:10 Running ['artisan' alibaba1688:category-translate] ... DONE
+```
+
+50개 이상의 스케줄 중 2개만 실행됐다. `schedule:clear-cache`로 뮤텍스 7개를 지웠는데도.
+
+Redis에서 직접 키를 조회하니 뮤텍스 키 3개가 남아있었다.
+
+```bash
+$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*"
+1) "laravel_production_database_laravel_production_cache_:framework/schedule-feb3f1..."
+2) "laravel_production_database_laravel_production_cache_:framework/schedule-3ddd80..."
+3) "laravel_production_database_laravel_production_cache_:framework/schedule-708cf9..."
+```
+
+키 이름을 자세히 보면 이상하다. `laravel_production_database_laravel_production_cache_:framework/schedule-...` prefix가 두 번 붙어있다.
+
+이것도 `config:cache`의 부작용이다. 1단계에서 `CACHE_DRIVER=file`로 변경한 상태에서 Redis에 뮤텍스가 기록됐고, 이후 `config:cache`를 실행하면서 캐시 prefix 설정이 꼬였다. `schedule:clear-cache`가 삭제하려는 키 이름과 실제 Redis에 저장된 키 이름이 달라서, 명령이 실행은 됐지만 이 3개는 찾지 못한 것이다.
+
+Redis CLI로 직접 삭제했다.
+
+```bash
+$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*" | \
+    xargs -r redis-cli -h 192.168.0.73 -p 10050 DEL
+(integer) 3
+
+$ redis-cli -h 192.168.0.73 -p 10050 KEYS "*schedule*"
+(empty array)   # 정리 완료
+```
+
+### 2-7. VVIC 주문도 멈춰있었다
+
+`gateway:vvic order_post`를 수동 실행했지만 아무 주문도 처리하지 않고 종료됐다.
+
+```bash
+$ php artisan gateway:vvic order_post
+2026-03-10 09:51 : 주문접수
+$
+```
+
+주문번호가 하나도 안 나왔다. DB에서 대기 중인 VVIC 주문을 직접 조회하면 35건이 있었다.
+
+```bash
+$ php artisan tinker --execute="
+\$rows = DB::table('order_products')
+    ->leftJoin('orders','orders.seq_id','=','order_products.orders_seq_id')
+    ->where('orders.payment_status','결제완료')
+    ->where('order_products.status','대기')
+    ->where('orders.deleted_at',0)
+    ->where('order_products.deleted_at',0)
+    ->where('order_products.market_code','vvic')
+    ->where('order_products.ch_code','!=','')
+    ->where('order_products.is_manual_order','!=','1')
+    ->where('order_products.created_at','<=',strtotime('-15 minutes'))
+    ->count();
+echo 'VVIC 대기 주문: ' . \$rows;"
+
+VVIC 대기 주문: 35
+```
+
+35건이 대기 중인데 왜 안 돌아갈까? `order_products` 테이블의 에러 메시지를 확인했다.
+
+```bash
+260310093106089598 => 배송정보 : 400050731 an error occurred during the calculate order weight
+260310074745988582 => 배송정보 : 400050731 an error occurred during the calculate order weight
+```
+
+모든 주문에 "배송정보" 에러가 찍혀있었다. 여기서 원인이 보이기 시작했다.
+
+---
+
+## 3. 근본 원인, config:cache와 env()
+
+### 코드 추적
+
+VVIC 주문 처리 코드(`VvicProcess.php`)를 보면:
+
+```php
+// VvicProcess.php:488-503
+foreach ($orderData as $item) {
+    // 배송정보 (서비스에서는 고정값 사용)
+    if (env('APP_ENV') != 'production') {           // <- 여기
+        $logiData = $this->VvicLib->vvicLogisticsGet(...);
+        if (empty($logiData['data']['express_list'])) {
+            VvicProcessModel::orderProductPut(
+                ['ch_order_msg' => '배송정보 : ' . @$logiData['status'] . ' ' . @$logiData['message']],
+                ['seq_id' => $item['seq_id']]
+            );
+            continue;  // 에러 찍고 스킵
+        }
+    }
+    // production에서는 이 블록을 건너뛰고 바로 주문 처리로 넘어감
+}
+```
+
+production 환경에서는 배송정보 API를 호출하지 않는 코드다. dev에서만 호출한다.
+
+그런데 `env('APP_ENV')`가 `null`을 반환하면?
+
+```
+null != 'production'  →  true
+```
+
+production 서버인데도 dev 전용 분기로 들어간다. 배송정보 API를 호출하고, 실패하고, 에러를 찍고, 주문을 스킵한다. 35건 전부.
+
+### 검증
+
+```bash
+$ php artisan tinker --execute="echo env('APP_ENV');"
+# (아무것도 출력 안 됨 — null)
+
+$ php artisan tinker --execute="echo config('app.env');"
+production
+```
+
+`env('APP_ENV')`는 null이고, `config('app.env')`는 production이다.
+
+### Laravel의 config 캐싱 메커니즘
+
+이걸 이해하려면 Laravel이 설정을 로딩하는 방식을 알아야 한다.
+
+평소(config 캐시가 없을 때)는 이렇게 동작한다:
+
+```
+요청 → Laravel 부팅 → .env 파일 파싱 → 환경변수 메모리에 로드
+                                          |
+                              env('APP_ENV') → .env에서 읽음 OK
+                              config('app.env') → config/app.php 평가 → env() 호출 OK
+```
+
+`.env`를 매 요청마다 파싱하므로 `env()` 함수가 코드 어디서든 동작한다.
+
+`config:cache`를 실행하면 달라진다:
+
+```
+php artisan config:cache 실행
+  → config/*.php 파일들을 전부 평가 (이때 env()를 호출해서 값 확정)
+  → 결과를 bootstrap/cache/config.php 에 단일 배열로 저장
+
+요청 → Laravel 부팅 → bootstrap/cache/config.php 발견!
+                        → .env 파일 파싱 건너뜀 (성능 최적화)
+                        |
+              env('APP_ENV') → null (.env를 안 읽었으니까)
+              config('app.env') → 캐시에서 읽음 OK
+```
+
+`config:cache`가 실행되면 `.env` 파일을 아예 읽지 않는다. `config/*.php` 안에서 `env('APP_ENV')`를 호출한 건 `config:cache` 시점에 값이 확정되어 캐시에 들어가니까 `config('app.env')`로 접근하면 문제없다.
+
+하지만 앱 코드(Controller, Model, Library, Command 등)에서 `env()`를 직접 호출하면 `.env`가 로드되지 않은 상태라 null이 반환된다.
+
+Laravel 공식 문서에도 이렇게 적혀있다:
+
+> "If you execute the `config:cache` command during your deployment process, you should be sure that you are only calling the `env` function from within your configuration files."
+
+### 영향 범위
+
+우리 코드에서 `env('APP_ENV')`를 앱 코드에서 직접 호출하는 곳이 25곳 이상 있었다. `config:cache` 후 이 전부가 null을 반환했다.
+
+```php
+// VvicProcess.php — VVIC 주문 처리
+if (env('APP_ENV') != 'production') { ... }
+// null != 'production' → true → dev 전용 로직 실행 → 주문 중단
+
+// GlobalLib.php — 슬랙 알림 발송
+if ((empty($param['text']) && empty($param['body'])) || env('APP_ENV') != 'production') {
+    // null != 'production' → true → 알림 미발송
+}
+
+// Alibaba1688Lib.php — 1688 API 토큰
+$this->accessToken = env('APP_ENV') === 'production' ? $prodToken : $devToken;
+// null === 'production' → false → dev용 토큰 사용 → API 호출 실패
+
+// ZaiLib.php — AI 추천 서비스
+if (env('APP_ENV') != 'production') { return; }
+// null != 'production' → true → 서비스 비활성화
+```
+
+VVIC 주문은 dev 전용 배송정보 API를 호출해서 실패했고, 슬랙 알림은 production이 아니라고 판단해서 안 보냈고, 1688 API는 dev용 토큰을 써서 인증이 안 됐고, AI 추천은 그냥 꺼졌다.
+
+이 장애들의 공통점이 하나 있다. 에러 로그가 없다. 코드가 예외를 던진 게 아니라 조건문이 의도와 다른 방향으로 평가됐을 뿐이다. `env()`가 null을 반환하는 건 에러가 아니니까.
+
+6시간 동안 발견을 못한 이유가 이거다.
+
+---
+
+## 4. 해결
+
+먼저 config 캐시를 지웠다.
+
+```bash
+$ php artisan config:clear
+  INFO  Configuration cache cleared successfully.
+
+$ php artisan tinker --execute="echo env('APP_ENV');"
+production   # 복구됨
+```
+
+`bootstrap/cache/config.php`가 삭제되면서 Laravel이 다시 `.env`를 직접 읽기 시작했다.
+
+VVIC 주문을 다시 돌렸다.
+
+```bash
+$ php artisan gateway:vvic order_post
+2026-03-10 09:58 : 주문접수
+260310035046426513
+260310035853842895
+260310065042282499
+260310072901990506
+260310074745988582
+260310093106089598
+260310094022306504
+```
+
+밀려있던 7건이 정상 처리됐다.
+
+그리고 Supervisor 워커를 다시 재시작했다. 2-5에서 이미 한 번 재시작했지만, 그때는 `config:cache`가 아직 활성화된 상태였다. 그 워커들도 `env()` = null인 상태로 부팅된 것이다.
+
+```bash
+$ sudo supervisorctl restart all
+# 13개 워커 모두 stopped → started
+```
+
+이후 밀려있던 79개 push Job이 처리되기 시작했다. 슬랙 알림도 다시 나가기 시작했다.
+
+---
+
+## 5. 정리
+
+| 시각 | 이벤트 | 영향 |
+|------|--------|------|
+| ~03:00 | Redis 서버 사망 | 서비스 전체 마비 |
+| ~03:30 | .env 수정 + `config:cache` 실행 | 1차 복구, 2차 장애 시작 (인지 못함) |
+| ~09:30 | 서버 점검 중 이상 감지 | 스케줄러, 큐, 주문 처리 모두 중단 확인 |
+| ~10:00 | `config:clear` + 워커 재시작 | 완전 복구 |
+
+| 단계 | 문제 | 원인 | 해결 |
+|------|------|------|------|
+| 1차 장애 | Redis 서버 사망 | 서버 장애 | 새 Redis 서버 구축 |
+| 2차 장애 | env() null 반환, 서비스 전체 오작동 | config:cache로 .env 미로딩 | config:clear |
+| 부수 장애 1 | 스케줄러 미실행 | Redis 뮤텍스 잔존 + 이중 prefix로 clear 실패 | Redis CLI로 키 직접 삭제 |
+| 부수 장애 2 | 큐 Job 미처리 (79건) | Supervisor 워커 좀비 상태 | supervisorctl restart all |
+
+### env() vs config()
+
+```php
+// config:cache 후 null 반환
+if (env('APP_ENV') != 'production') { ... }
+
+// config 캐시 여부와 무관하게 정상 동작
+if (config('app.env') != 'production') { ... }
+
+// 가장 권장하는 방법
+if (app()->environment('production')) { ... }
+```
+
+| | `env()` | `config()` |
+|---|---|---|
+| 사용 위치 | `config/*.php` 내부만 | 어디서든 |
+| config:cache 후 | null | 정상 |
+| 성능 | .env 파싱 필요 | 캐시 가능 |
+
+### Redis 장애 복구 체크리스트
+
+1. `.env` 설정 확인, 새 Redis 주소/포트/패스워드
+2. config 캐시 확인, `bootstrap/cache/config.php`가 있으면 `config:clear`
+3. env() 동작 검증, `php artisan tinker --execute="echo env('APP_ENV');"`
+4. Redis 뮤텍스 정리, `redis-cli KEYS "*schedule*"` 로 확인 후 직접 삭제
+5. Supervisor 워커 재시작, config 변경 후에는 반드시
+6. 큐 상태 확인, `jobs` 테이블 pending과 `failed_jobs` 건수
+7. 스케줄러 수동 실행, `php artisan schedule:run`으로 동작 확인
+
+### 돌아보며
+
+`config:cache`는 Laravel의 정상적인 성능 최적화 기능이다. 문제는 이 명령어가 아니라, 앱 코드 곳곳에서 `env()`를 직접 호출하는 25곳이었다. Laravel 공식 문서에도 명시된 규칙인데, 레거시 코드에서는 쉽게 간과된다.
+
+이 장애에서 가장 찝찝했던 건 조용하다는 점이다. 예외도 없고, 에러 로그도 없다. 코드는 멀쩡하게 실행되는데 null이 조건문을 잘못된 방향으로 보낼 뿐이다. Sentry가 있어도, Grafana가 있어도, 에러 기반 알림으로는 이걸 못 잡는다. 비즈니스 지표(주문 처리 건수, 슬랙 발송 건수 같은 것)를 모니터링하지 않으면 발견이 늦어질 수밖에 없다.
+
+`config:cache`를 안전하게 사용하려면 앱 코드 전체에서 `env()` 직접 호출을 먼저 제거해야 한다. 25곳을 `config()` 또는 `app()->environment()`로 바꾸는 작업이 끝나기 전까지는, 이 명령어를 쓰지 않기로 했다.
