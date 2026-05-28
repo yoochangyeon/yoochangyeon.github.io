@@ -1,0 +1,276 @@
+---
+publishDate: 2026-05-24T00:00:00Z
+author: "유창연"
+title: "어이사마켓 추천 모델 만들기 (3) 콘텐츠 Two-Tower를 세우다, ID 임베딩을 버리고 얻은 것"
+excerpt: "Two-Tower 구조에서 Item ID 임베딩을 제거하고 콘텐츠 피처만으로 상품을 표현한 결정. 학습 동역학(sampled softmax, logQ correction)과 142K 규모에서 FAISS를 쓰지 않은 서빙 결정까지."
+category: "Machine Learning"
+tags: ["recommender-system", "two-tower", "embedding", "sampled-softmax", "logq-correction"]
+draft: false
+---
+
+# 어이사마켓 추천 모델 만들기 (3) 콘텐츠 Two-Tower를 세우다, ID 임베딩을 버리고 얻은 것
+
+> **앞 편 요약**: #2에서 후보풀을 1.1M→142K로 줄이고, prod DB SELECT-only 추출과 시간 기반 split 누수 가드까지 데이터 파이프라인을 재구축했습니다.
+
+이 편의 핵심 결정은 한 줄로 "Item ID 임베딩을 통째로 버리고, 상품을 콘텐츠 피처로만 표현한다"입니다. 부수적으로 Ko-SBERT 텍스트 인코더 선택, in-batch sampled softmax + logQ correction 도입, signal weight 설계, 그리고 서빙 단계에서 FAISS를 쓰지 않은 결정까지 함께 다룹니다.
+
+이 편이 시리즈에서 가장 깁니다. 한 번에 읽기 부담스럽다면 5번 섹션(logQ)에서 한 번 쉬어가도 됩니다.
+
+---
+
+## 1. 핵심 트레이드오프: ID 임베딩 vs 콘텐츠 임베딩
+
+추천 시스템 자료를 읽으면 거의 모든 Two-Tower 구현이 ID 임베딩(상품·유저별로 고유한 학습 가능한 벡터)을 쓰는 것 같았습니다. YouTube DNN(Covington et al., 2016)도 user ID와 video ID를 각각 임베딩으로 표현한다고 합니다. 그게 표준 같았습니다.
+
+그런데 #1에서 봤듯이 1.1M item ID 임베딩(32차원, 약 3,540만 파라미터)이 학습되지 않아 모델 전체를 망쳤습니다. 후보풀을 142K로 줄였으니 이번엔 142K × 32 ≈ 450만 파라미터 정도로 줄어듭니다. 줄어든 만큼 학습이 좀 잘 되지 않을까 싶었습니다.
+
+해보니 여전히 안 됐습니다. 이유는 분포에 있었습니다.
+
+### 긴 꼬리(long-tail) 분포에서 ID 임베딩 학습 실패
+
+학습 데이터의 상품별 등장 횟수를 히스토그램으로 그려보면 #1에서 다뤘던 긴 꼬리(long-tail) 분포가 그대로 보입니다. 상위 1~2%의 인기 상품이 인터랙션의 절반 가까이를 차지하고, 나머지 98%는 한두 번씩만 등장합니다.
+
+ID 임베딩은 SGD(확률적 경사하강법)로 업데이트되는데, 등장 횟수가 0~1회인 상품은 임베딩이 초기 랜덤 값에서 거의 안 움직인다고 합니다. 142K로 줄여도 여전히 대부분의 상품 임베딩이 *학습되지 않은 노이즈*로 남았습니다.
+
+문제는 그 노이즈가 점수 계산에서 콘텐츠 피처(브랜드, 카테고리, 텍스트)의 신호를 압도해버린다는 점이었습니다. 모델 입장에서 ID 임베딩은 "이 상품 고유의 표현"이고, 다른 피처는 "이 상품 종류의 일반 표현"입니다. ID 임베딩이 신호든 노이즈든 모델은 ID 쪽에 더 의존하려 한다는 게 자료의 설명이었습니다.
+
+### 결정: Item ID 임베딩 제거
+
+이 결정은 직관과 정면 충돌했습니다. "더 많은 정보를 주는 게 항상 낫다"는 직관이 있는데, 여기서는 *학습이 불가능한 정보*는 추가하지 않는 게 낫다는 것이었습니다.
+
+비교 대상으로 본 두 사례:
+
+| 사례 | 아이템 표현 방식 | 환경 |
+|---|---|---|
+| **YouTube DNN** (2016) | video ID 임베딩 중심 | 시청 로그가 영상당 수십만~수억 건. ID 임베딩이 학습되기에 충분 |
+| **Pinterest PinSage** (2018) | 콘텐츠(이미지+텍스트+그래프) 기반 GNN(그래프 신경망) | 핀이 수십억 개, 신규 핀이 매일 들어옴. ID 임베딩 학습이 사실상 불가능 |
+
+어이사마켓은 후자에 가까웠습니다. 142K 후보 중 학습 데이터에 충분히 등장하는 상품은 일부고, 나머지는 PinSage가 다루는 churn 환경에 가깝다고 판단했습니다.
+
+**결정**: ItemTower에서 ID 임베딩 제거. 콘텐츠 피처(카테고리, 브랜드, 마켓, 스타일, 색상, 외부 소스, 텍스트, numeric)만 사용.
+
+| 항목 | 변경 전 | 변경 후 |
+|---|---|---|
+| 모델 파라미터 | 36,080,264 | **643,928** (약 56분의 1) |
+| 학습 시간 (5-seed) | 측정 불가(학습이 깨졌으므로) | 약 17분 |
+| 피크 RAM | 측정 안 함 | `< 12GB` |
+
+> **중요한 주의**: UserTower의 user_id 임베딩은 *유지*했습니다. 활성 유저가 약 9천 명이라 ID 임베딩이 학습되기에 충분한 인터랙션이 있습니다. ID 임베딩 자체가 나쁜 게 아니라, *학습 가능한 만큼만* 써야 한다는 게 이번에 얻은 교훈이었습니다.
+
+## 2. ItemTower의 콘텐츠 피처 설계
+
+ID를 빼고 나면 무엇으로 상품을 표현할 것인가가 다음 질문이었습니다. 후보로 모은 피처와 차원은 다음과 같습니다.
+
+| 피처 | 타입 | 차원 | 비고 |
+|---|---|---|---|
+| `category` | Embedding | 16 | 최상위 카테고리 |
+| `brand` | Embedding | 32 | min_freq=5 필터 (희소 브랜드는 OOV) |
+| `market` | Embedding | 8 | 판매처 |
+| `style` | Embedding | 8 | 스타일 태그 |
+| `color` | Embedding | 8 | 색상 태그 |
+| `external_source` | Embedding | 4 | none / 1688 / vvic |
+| `text_emb` | Linear projection | 768 → 64 | Ko-SBERT 임베딩을 64차원으로 압축 |
+| `numeric` | Dense | 15 | log_price, log_min_qty, log_view_count 등 |
+
+이 피처들을 concat(가로로 이어 붙이기)한 뒤 MLP(다층 퍼셉트론) `[256, 128]`을 통과시켜 최종 128차원 임베딩을 만듭니다. ReLU(활성 함수), Dropout 0.35(과적합 방지를 위해 학습 시 일부 뉴런을 무작위로 끄는 기법), 출력은 L2 정규화로 단위 벡터(길이가 1인 벡터)로 만듭니다.
+
+### 왜 L2 정규화인가
+
+L2 정규화를 하면 두 임베딩의 내적이 cosine similarity(코사인 유사도, 두 벡터가 얼마나 같은 방향을 가리키는지를 -1~1로 측정)가 됩니다.
+
+```
+score(u, i) = (u · i) / (||u|| · ||i||) = u_norm · i_norm
+```
+
+이 정규화가 학습 안정성에 중요하다는 자료를 여럿 봤습니다. 정규화하지 않으면 임베딩의 norm(길이)이 자유롭게 커질 수 있고, "norm이 큰 상품이 모든 유저에게 점수 1등"이 되는 식의 degenerate solution(퇴화 해, 의미는 없지만 손실 값은 작아지는 해)으로 빠질 수 있다고 합니다. 일반적인 MLP 분류·회귀 실습에서는 거의 안 다루는 디테일인데, retrieval에서는 거의 모든 구현이 이걸 깔고 가는 듯합니다.
+
+## 3. 부수 결정: Ko-SBERT 선택
+
+상품명·설명을 임베딩으로 만들기 위한 텍스트 인코더가 필요했습니다. 후보군은 다음과 같았습니다.
+
+| 모델 | 강점 | 약점 |
+|---|---|---|
+| **Ko-SBERT** (`jhgan/ko-sroberta-multitask`) | 한국어 sentence embedding 전용, 무료, MPS에서 동작 | 도메인 특화 fine-tuning 없음 |
+| **multilingual E5** | 다국어, retrieval task에 최적화 | 모델이 더 큼, 한국어 패션 도메인에선 Ko-SBERT보다 미세 우위 미확인 |
+| **OpenAI text-embedding-3** | 품질 우수 | 외부 API 비용·운영 데이터 외부 전송 이슈 |
+| **자체 BERT fine-tuning** | 도메인 적합도 최고 | 비용·시간·평가 인프라 필요 |
+
+선택은 **Ko-SBERT**로 갔습니다. 이유는 단순합니다.
+
+1. 외부 API는 운영 데이터를 밖으로 보내야 하므로 사내 보안 정책상 어려움
+2. 자체 fine-tuning은 retrieval 모델 자체보다 일이 큼. 이 시점에서는 retrieval 본체에 집중해야 했음
+3. 다른 한국어 임베딩 모델(SimCSE-Korean 등)도 후보였지만 Ko-SBERT가 평가가 가장 안정적이라는 자료를 봤습니다
+
+768차원으로 인코딩한 뒤 64차원으로 linear projection(작은 차원으로 압축)합니다. 768을 그대로 쓰면 ItemTower 입력 차원이 너무 커져서 다른 피처가 묻힌다고 합니다.
+
+Ko-SBERT 임베딩은 사전 계산해서 디스크에 저장(`item_text.npy`, fp16, 약 208MB)해두고 학습/추론 시 로드합니다. 매번 인코딩하면 학습 시간이 폭증한다는 자료를 보고 사전 계산 방식을 택했습니다.
+
+> **이 결정에서 알게 된 것**: "기성 모델을 그대로 쓰는 게 정말 충분한가?"는 자료를 따라 익힐 때는 거의 떠올리지 않던 질문이었습니다. 실제로는 도메인 특화 fine-tuning을 하면 더 좋을 가능성이 분명히 있다고 합니다. 다만 그 향상이 "이 시점 프로젝트에서 가장 큰 리턴"인지가 별개 질문이고, 여기서는 아니었습니다.
+
+## 4. UserTower 설계
+
+UserTower는 ItemTower보다 단순했습니다. 활성 유저가 9천 명이므로 ID 임베딩이 학습 가능합니다.
+
+| 피처 | 타입 | 차원 | 설명 |
+|---|---|---|---|
+| `user_id` | Embedding | 32 | 유저별 학습 가능한 표현 |
+| `main_cat` | Embedding | 8 | 주요 관심 카테고리 |
+| `grade` | Embedding | 8 | 유저 등급 |
+| `numeric` | Dense | 11 | days_since_signup/login/active, has_first_cart 등 |
+
+이걸 concat 후 MLP `[256, 128]`, ReLU, Dropout 0.35, L2 정규화. ItemTower와 같은 128차원 공간으로 투영합니다.
+
+같은 공간에 두 타워가 출력을 내야 내적이 의미를 가진다고 합니다. 출력 차원만 같다고 되는 게 아니라, *학습 과정에서 두 임베딩이 정렬*되어야 한다는 것입니다. 그 정렬을 만드는 게 다음 섹션의 손실 함수입니다.
+
+## 5. logQ correction: 인기 편향을 어떻게 잡는가
+
+#1에서 진단한 결함 3번이 이 섹션의 주제입니다.
+
+### in-batch sampled softmax가 뭐고, 왜 필요한가
+
+Two-Tower 학습에서 가장 어려운 부분은 negative sample(이 유저가 좋아하지 않는 상품)을 어떻게 모으느냐였습니다. 매 학습 스텝마다 "이 유저는 이 상품을 좋아하고, 다른 상품들은 안 좋아한다"는 신호를 줘야 한다고 합니다. 그런데 후보가 142K개입니다. 매번 142K개 전부를 negative로 두고 softmax를 계산하면 학습이 멈춥니다.
+
+**in-batch sampled softmax**라는 트릭이 표준이라고 합니다. 같은 배치 안의 다른 상품들을 임시로 negative로 빌려 쓰는 방식입니다.
+
+```
+배치 크기 512 → 한 유저당 positive 1개 + negative 511개
+```
+
+매 배치마다 512개의 (유저, 상품) 쌍을 모으고, 한 유저에게는 자기 자신의 positive 상품과 *다른 유저들의 positive 상품*을 negative로 사용합니다. 효과적으로 negative를 거의 공짜로 얻는다고 합니다.
+
+### 문제: 인기 상품이 negative로 반복 등장
+
+문제는 인기 상품이 어느 배치에든 항상 들어 있다는 점이었습니다. 인기 상품 A가 배치 안에서 유저 1의 positive라면, 동시에 유저 2~512의 negative가 됩니다. 매 배치마다 이런 일이 반복되면, 모델은 "인기 상품 A는 대부분의 유저에게 negative구나"라고 잘못 학습합니다.
+
+수학적으로는 sampling distribution(샘플링 분포)이 균등하지 않아서 생기는 편향이라고 합니다. 어떤 상품 i가 batch에 등장할 확률 q(i)는 그 상품의 인기도에 비례합니다.
+
+### logQ correction (Yi et al., RecSys 2019)
+
+이걸 보정하는 방법을 Yi et al.이 RecSys 2019에서 **logQ correction(로그Q 보정)** 이라는 이름으로 정리했다고 합니다. 점수에서 `log q(i)`를 빼주는 방식입니다.
+
+```
+adjusted_score(u, i) = (u · i) / τ − log q(i)
+```
+
+여기서 q(i)는 학습 데이터에서 상품 i의 등장 빈도를 추정한 값입니다. 인기 상품은 q(i)가 크므로 `log q(i)`도 크고, adjusted score에서 그만큼 빼주면 in-batch 인기 편향이 보정된다고 합니다.
+
+수식만 보면 단순한데, 처음에는 "왜 빼는 게 맞지?"가 직관적으로 안 와닿았습니다. 이해한 방법은 sampling 분포 q와 실제 분포 p의 비율을 importance weight(중요도 가중치)로 보정하는 표준 기법으로 보는 것이었습니다. 자세한 유도는 Yi et al. 논문 §3에 있다고 합니다.
+
+### 구현 디테일
+
+q(i) 추정은 단순했습니다.
+
+```python
+item_counts = train["item_id"].value_counts()
+total = item_counts.sum()
+log_q = np.log((item_counts + 1) / total)  # add-1 smoothing
+```
+
+학습 루프에서는 매 배치마다 negative 상품들의 log_q를 logits에서 빼줍니다.
+
+```python
+logits = (u_emb @ i_emb.T) / temperature   # (B, B)
+logits = logits - log_q[item_idx]          # logQ correction
+loss = -Σ weight_i * log_softmax(logits)[i, i] / Σ weight_i
+```
+
+`temperature=0.05`는 softmax를 sharper하게(분포를 더 뾰족하게) 만드는 스케일링 파라미터입니다. 너무 작으면 그래디언트가 폭발하고, 너무 크면 학습 신호가 약해진다고 합니다. 이 값은 여러 후보를 돌려본 뒤 안정적으로 잘 학습되는 값으로 정했습니다.
+
+> **이 보정의 효과가 실제로 통계적으로 유의미한지, 그리고 baseline(아무 보정 없는 인기도 추천 R*) 대비 얼마나 의미 있는 개선인지는 #5에서 통계적 검증을 통해 다룹니다.** 여기서는 "이 보정 없으면 학습이 깨진다"는 결과적 사실만 명시합니다.
+
+## 6. signal weight: 모든 인터랙션이 같은 무게는 아니다
+
+유저 행동에는 강한 신호와 약한 신호가 있습니다. 단순 조회와 실제 구매가 같은 무게로 학습되면 안 된다는 게 직관적으로 떠올랐습니다. 손실 함수에 signal weight(시그널 가중치)를 곱해 강한 신호를 더 크게 반영하도록 구현했습니다.
+
+| 시그널 | DB 소스 | weight |
+|---|---|---|
+| view | products_view_log | 0.5 |
+| wish | wishs | 1.5 |
+| cart | carts | 2.0 |
+| request (견적요청 완료) | request_product (`status='완료'`) | 3.0 |
+| purchase | order_products (`payment_status='결제완료'`) | 5.0 |
+
+이 숫자들은 "정답"이 아니었습니다. 도메인 감각으로 정한 초기값이고, 일부 조합은 ablation으로 검증했습니다. 도메인을 잘 아는 동료가 "구매는 조회의 10배 무게가 맞다"고 했다면 다른 비율로 갔을 수도 있습니다. 절대 비율이 아니라 *상대 비율*이 중요하다는 게 자료의 설명이었습니다.
+
+손실 식에 weight가 들어가는 곳:
+
+```
+loss = Σ weight_i * cross_entropy(logits - log_q, target_i) / Σ weight_i
+```
+
+분자에 weight를 곱하고, 정규화를 위해 분모에도 weight 합을 둡니다. 이러면 배치 안에서 강한 신호 인터랙션 1건이 약한 신호 인터랙션 N건만큼의 그래디언트 영향을 준다고 합니다.
+
+## 7. 사이드노트: 서빙은 어떻게 하는가, 그리고 왜 FAISS를 안 썼나
+
+학습이 끝나면 다음 두 가지가 디스크에 저장됩니다.
+
+- `user_emb.npy`: 9천 × 128 float32 (약 5MB)
+- `item_emb.npy`: 142K × 128 float32 (약 73MB)
+
+추천 시점의 계산은 단순합니다.
+
+```python
+# scripts/05_predict.py 의 핵심 루프
+item_embs_T = item_embs.T
+for start in range(0, n_users, chunk):
+    end = min(start + chunk, n_users)
+    scores = user_embs[start:end] @ item_embs_T   # (chunk, 142K)
+    cand = min(candidate_top_k, scores.shape[1])
+    top = np.argpartition(-scores, cand - 1, axis=1)[:, :cand]
+    # 정렬 후 seen 아이템 제외
+```
+
+여기서 `np.argpartition`은 top-K만 빠르게 뽑는 NumPy 함수입니다. 전체 정렬보다 훨씬 빠르다고 합니다. 142K 후보에서 200개 뽑는 데 한 유저당 수십 ms 수준이었습니다.
+
+### 왜 FAISS를 안 썼는가
+
+추천 시스템 자료를 읽으면 "수억 개 후보에서 ANN(Approximate Nearest Neighbor, 근사 최근접 검색) 인덱스로 빠르게 검색한다"는 얘기가 단골입니다. FAISS, ScaNN, HNSW 같은 라이브러리가 표준이라고 합니다.
+
+어이사마켓에서는 FAISS를 도입하지 않기로 했습니다. 이유는 세 가지.
+
+1. **규모가 작다**: 142K 후보면 exact dot product가 한 유저당 수십 ms입니다. 9천 유저 전체에 대해서도 분 단위로 끝납니다. ANN의 근사 오차를 감수할 이유가 약했습니다.
+2. **인프라 의존성을 늘리지 않는다**: FAISS는 C++ 라이브러리이고, 설치·운영에서 별도의 주의가 필요하다고 합니다. NumPy 하나로 충분한 일에 의존성을 추가할 이유가 없었습니다.
+3. **재현성·디버깅이 쉽다**: exact 검색은 결과가 결정론적(deterministic)입니다. ANN은 인덱스 빌드 파라미터에 따라 결과가 미세하게 달라져 디버깅이 어렵다고 합니다.
+
+후보 규모가 1M, 10M으로 커지면 이 결정은 다시 봐야 한다고 자료에서 봤습니다. 지금은 142K이므로 가장 단순한 도구가 가장 적절하다는 결론이었습니다.
+
+## 8. 첫 결과: recall@20 = 0.0534
+
+위 결정들을 모두 적용한 1차 재설계 모델의 결과입니다.
+
+| 모델 | recall@20 |
+|---|---|
+| 첫 모델 (#1의 깨진 상태) | 0.0048 |
+| **1차 재설계 (이 편의 결과)** | **0.0534** |
+| 인기도 floor R* (recent_global) | 0.0166 |
+
+0.0048 → 0.0534. **약 11배 향상**, 인기도 floor 대비 약 3.2배.
+
+이 수치를 어떻게 신뢰할 수 있는지(11배라는 게 정말 의미 있는 차이인지, 아니면 우연일 수도 있는지)는 #5에서 다룹니다. 여기서는 "구조적 결함을 고치면 결과가 극적으로 바뀐다"는 사실만 확인합니다.
+
+## 9. 이 편에서 결정된 것
+
+- **핵심**: Item ID 임베딩 제거. 콘텐츠 피처만으로 상품 표현 (파라미터 36M → 644K)
+- **부수 1**: Ko-SBERT(`jhgan/ko-sroberta-multitask`)로 텍스트 인코딩, 768→64 projection
+- **부수 2**: in-batch sampled softmax + logQ correction (Yi et al., RecSys 2019)
+- **부수 3**: signal weight 구매 5.0 > 견적 3.0 > 장바구니 2.0 > 위시 1.5 > 조회 0.5
+- **사이드노트**: 서빙은 NumPy argpartition으로 exact search. FAISS 미사용 (142K 규모에서 ANN의 근사 오차 감수할 이유 약함)
+
+### 이 편에서 새로 알게 된 것
+
+- **긴 꼬리 분포에서 ID 임베딩은 학습되지 않는다**: 더 많은 정보가 항상 더 나은 결과는 아니다
+- **L2 정규화 후 내적 = cosine similarity**: degenerate solution 방지의 표준 기법이라는 것
+- **in-batch sampled softmax**: negative를 거의 공짜로 얻는 트릭이지만 인기 편향이 동반된다
+- **logQ correction**: sampling 분포 보정을 통한 인기 편향 제거 (중요도 가중치의 표준 기법)
+- **temperature scaling**: softmax sharpness를 조절하는 스케일링 파라미터
+- **서빙 규모와 도구 선택**: 142K는 FAISS 없이 NumPy로 충분하다. 의존성은 비용이다
+
+### 여전히 모르는 것
+
+- user_id 임베딩의 적절한 차원(32 vs 64 vs 128)이 무엇인지는 체계적으로 비교하지 못했다.
+- Ko-SBERT 대신 한국어 패션 도메인 fine-tuning 모델을 썼다면 얼마나 좋아졌을지 알 수 없다. 비용 대비 가치를 측정하지 못한 영역이다.
+- 다른 temperature 값(0.01, 0.1)과의 비교는 일부만 했고, 충분히 체계적이지 않다.
+
+## 다음 편 예고
+
+콘텐츠 Two-Tower로 recall@20이 0.0048→0.0534가 됐습니다. 그런데 후보 피처(브랜드 찜, 견적요청, 외부 metrics, 이미지 등)가 여러 개일 때, **하나씩 넣어보는 ablation으로 충분할까요?** #4에서 단독 ablation vs 전수 부분집합 탐색의 트레이드오프, 그리고 직관(단독 1위가 최종 1위)이 틀리는 경우를 다룹니다.
