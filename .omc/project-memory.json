@@ -1,0 +1,169 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780021039046,
+  "projectRoot": "/Users/yoochangyeon/repository/yoochangyeon.github.io",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": "^18.17.1 || ^20.3.0 || >= 21.0.0",
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "astro",
+        "version": "5.15.2",
+        "category": "fullstack"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": "Node.js 18.17.1||20.3.0||21.0.0"
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "astro dev",
+      "start": "astro dev",
+      "build": "astro build",
+      "preview": "astro preview",
+      "astro": "astro",
+      "check": "npm run check:astro && npm run check:eslint && npm run check:prettier",
+      "check:astro": "astro check",
+      "check:eslint": "eslint .",
+      "check:prettier": "prettier --check .",
+      "fix": "npm run fix:eslint && npm run fix:prettier",
+      "fix:eslint": "eslint --fix .",
+      "fix:prettier": "prettier -w ."
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "scripts",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "nginx": {
+      "path": "nginx",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1780021039032,
+      "keyFiles": [
+        "nginx.conf"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 4,
+      "lastAccessed": 1780021039035,
+      "keyFiles": [
+        "_headers",
+        "avatar.png",
+        "google8db8a9c0545d5eb7.html",
+        "robots.txt"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1780021039035,
+      "keyFiles": [
+        "extract-tistory.js",
+        "fix-excerpts.mjs",
+        "migrate-tistory.mjs"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 4,
+      "lastAccessed": 1780021039035,
+      "keyFiles": [
+        "config.yaml",
+        "env.d.ts",
+        "navigation.ts",
+        "types.d.ts"
+      ]
+    },
+    "vendor": {
+      "path": "vendor",
+      "purpose": "Third-party code",
+      "fileCount": 1,
+      "lastAccessed": 1780021039035,
+      "keyFiles": [
+        "README.md"
+      ]
+    },
+    "src/assets": {
+      "path": "src/assets",
+      "purpose": "Static assets",
+      "fileCount": 0,
+      "lastAccessed": 1780021039036,
+      "keyFiles": []
+    },
+    "src/components": {
+      "path": "src/components",
+      "purpose": "UI components",
+      "fileCount": 3,
+      "lastAccessed": 1780021039036,
+      "keyFiles": [
+        "CustomStyles.astro",
+        "Favicons.astro",
+        "Logo.astro"
+      ]
+    },
+    "src/data": {
+      "path": "src/data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1780021039037,
+      "keyFiles": [
+        "author.json"
+      ]
+    },
+    "src/pages": {
+      "path": "src/pages",
+      "purpose": "Page components",
+      "fileCount": 5,
+      "lastAccessed": 1780021039037,
+      "keyFiles": [
+        "404.astro",
+        "about.astro",
+        "index.astro"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
